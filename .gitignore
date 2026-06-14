@@ -1,0 +1,9 @@
+.agents
+node_modules
+e2e
+.kiro
+.agent
+dist
+_bmad
+_bmad-output
+.plans
