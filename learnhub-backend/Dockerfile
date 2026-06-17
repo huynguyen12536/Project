@@ -1,5 +1,5 @@
 # Multi-stage build
-FROM maven:3.9.6-jdk-21 AS build
+FROM maven:latest AS build
 WORKDIR /workspace
 COPY pom.xml ./
 COPY src ./src

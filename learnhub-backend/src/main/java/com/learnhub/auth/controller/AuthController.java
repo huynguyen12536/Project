@@ -29,10 +29,7 @@ public class AuthController {
     public ResponseEntity<?> login(@RequestBody Map<String, String> body) throws Exception {
         String email = body.get("email");
         String password = body.get("password");
-        String access = authService.login(email, password);
-        // Simplified: refresh token same as access for sprint 1 (rotate later)
-        String refresh = access;
-        return ResponseEntity.ok(Map.of("accessToken", access, "refreshToken", refresh));
+        return ResponseEntity.ok(authService.login(email, password));
     }
 
     @PostMapping("/refresh")
@@ -41,5 +38,12 @@ public class AuthController {
         String access = authService.refresh(refreshToken);
         String refresh = access;
         return ResponseEntity.ok(Map.of("accessToken", access, "refreshToken", refresh));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestBody Map<String, String> body) throws Exception {
+        String refreshToken = body.get("refreshToken");
+        authService.logout(refreshToken);
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
 }

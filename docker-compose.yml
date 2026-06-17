@@ -10,12 +10,22 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learnhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7
     command: ["redis-server", "--save", "60", "1"]
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   learnhub-app:
     build: ./learnhub-backend
@@ -29,22 +39,13 @@ services:
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - RSA_PRIVATE_KEY_PEM=${RSA_PRIVATE_KEY_PEM}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
-
-  learnhub-worker:
-    build:
-      context: ./learnhub-backend
-      target: worker
-    environment:
-      - SPRING_PROFILES_ACTIVE=worker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/learnhub
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
-      - postgres
+    restart: on-failure
 
 volumes:
   pgdata:
