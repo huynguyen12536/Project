@@ -2,7 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/agents-critical-findings-resolution-prd.iml" filepath="$PROJECT_DIR$/.idea/agents-critical-findings-resolution-prd.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.agents/.agents.iml" filepath="$PROJECT_DIR$/.agents/.agents.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.kiro/.kiro.iml" filepath="$PROJECT_DIR$/.kiro/.kiro.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/Project.iml" filepath="$PROJECT_DIR$/.idea/Project.iml" />
     </modules>
   </component>
 </project>
