@@ -1,0 +1,50 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: learnhub
+      POSTGRES_USER: learnhub
+      POSTGRES_PASSWORD: learnhubpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--save", "60", "1"]
+    ports:
+      - "6379:6379"
+
+  learnhub-app:
+    build: ./learnhub-backend
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/learnhub
+      - SPRING_DATASOURCE_USERNAME=learnhub
+      - SPRING_DATASOURCE_PASSWORD=learnhubpass
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - RSA_PRIVATE_KEY_PEM=${RSA_PRIVATE_KEY_PEM}
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8080:8080"
+
+  learnhub-worker:
+    build:
+      context: ./learnhub-backend
+      target: worker
+    environment:
+      - SPRING_PROFILES_ACTIVE=worker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/learnhub
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  pgdata:
