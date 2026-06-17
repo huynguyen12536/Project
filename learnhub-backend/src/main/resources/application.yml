@@ -12,9 +12,9 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-
-redis:
-  url: ${REDIS_URL:redis://localhost:6379}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
 
 jwt:
   access-token-ttl-seconds: 900 # 15 minutes
