@@ -1,0 +1,438 @@
+---
+# Sprint Status Tracker
+# Updated: 2026-06-17
+# Project: LearnHub
+# BMAD Workflow: Sprint Planning Phase
+
+# ===================
+# SPRINT 1 STATUS
+# ===================
+sprint_1:
+  name: "Authentication & User Management (Foundation)"
+  status: COMPLETE
+  started: 2026-06-01
+  completed: 2026-06-15
+  duration_days: 14
+
+  epic: "Authentication & User Management"
+  goal: "Provide secure user accounts, JWT auth, refresh tokens, and RBAC integration"
+  business_value: "Foundation for all user-facing features"
+
+  completed_stories:
+    - id: "AUTH-01"
+      title: "User Registration with Email/Password"
+      status: COMPLETE
+      pr: "#1"
+      merged: 2026-06-15
+      complexity: M
+
+    - id: "AUTH-02"
+      title: "JWT Access + Refresh Token Flow"
+      status: COMPLETE
+      pr: "#1"
+      merged: 2026-06-15
+      complexity: M
+
+    - id: "AUTH-03"
+      title: "Token Refresh Flow"
+      status: COMPLETE
+      pr: "#1"
+      merged: 2026-06-15
+      complexity: M
+
+    - id: "ADMIN-03"
+      title: "JWT Key Rotation"
+      status: COMPLETE
+      pr: "#1"
+      merged: 2026-06-15
+      complexity: M
+
+  deliverables:
+    - "User registration endpoint"
+    - "JWT authentication (RS256)"
+    - "Token refresh mechanism"
+    - "Spring Security integration"
+    - "Casbin RBAC skeleton"
+    - "PostgreSQL V1 schema"
+
+  quality_metrics:
+    - "All unit tests passing"
+    - "Security review passed"
+    - "No critical issues"
+    - "Main branch stable"
+
+  main_branch_status: "✅ STABLE at commit f7bd46b"
+
+# ===================
+# SPRINT 2 STATUS
+# ===================
+sprint_2:
+  name: "User Profile Management & GitHub Integration"
+  status: IN_PROGRESS
+  started: 2026-06-15
+  target_end: 2026-06-29
+  duration_days: 14
+
+  # ----------
+  # EPIC 2A: User Profile Management
+  # ----------
+  epic_2a:
+    name: "User Profile Management, Email Verification, Password Reset"
+    status: READY_FOR_MERGE
+    pr: "#3"
+    pr_status: "Open - Quality gates passed"
+
+    stories:
+      - id: "PRF-01"
+        title: "User Profile Management (Get & Update)"
+        description: "Implement user profile endpoints to view and update profile fields"
+        status: COMPLETE
+        tests_created: 8
+
+      - id: "PRF-02"
+        title: "Email Verification Flow"
+        description: "Generate tokens, send emails, verify email addresses"
+        status: COMPLETE
+        tests_created: 10
+
+      - id: "PRF-03"
+        title: "Password Reset Flow"
+        description: "Initiate password reset, confirm with token, validate tokens"
+        status: COMPLETE
+        tests_created: 10
+
+      - id: "PRF-04"
+        title: "Account Lockout Mechanism"
+        description: "Track failed attempts, lock account after 5 failures for 30 minutes"
+        status: COMPLETE
+        tests_created: 10
+
+    deliverables:
+      - "7 API endpoints"
+      - "3 new entity models"
+      - "5 business logic services"
+      - "38 unit tests"
+      - "Database V2 migration"
+      - "Email notification service"
+      - "Token security utilities"
+
+    quality_gates:
+      audit: "✅ PASS - 50/50 components verified"
+      testing: "✅ PASS - 38 unit tests created"
+      security: "✅ ACCEPTABLE - 9/10 OWASP compliance"
+      qa_plan: "✅ READY - 35+ test scenarios"
+      release: "✅ APPROVED FOR MERGE"
+
+    release_decision: "READY_FOR_MERGE = YES"
+    branch: "feature/epic1-user-profile-email-password"
+    merge_target: "main"
+    next_action: "Merge to main after final approval"
+
+  # ----------
+  # EPIC 2B: GitHub Integration (PENDING)
+  # ----------
+  epic_2b:
+    name: "GitHub Integration"
+    status: NOT_STARTED
+    goal: "Connect learners to GitHub, retrieve repos for evaluation"
+    business_value: "Core portfolio & evidence ingestion"
+
+    stories:
+      - id: "GIT-01"
+        title: "GitHub OAuth Connection"
+        description: "Allow learners to authorize LearnHub to access their GitHub account"
+        status: REVIEW
+        priority: P0
+        complexity: M
+        story_file: "2-1-github-oauth-connection.md"
+        story_location: "_bmad-output/implementation-artifacts/"
+        dependencies:
+          - "Sprint 1 Auth (✅ complete)"
+          - "Epic 2A (⏳ ready to merge)"
+        acceptance_criteria:
+          - "✅ OAuth flow completes successfully"
+          - "✅ User OAuth metadata stored in database"
+          - "✅ Tokens refresh automatically"
+          - "✅ Disconnect flow removes tokens"
+        estimated_effort: "3-5 days"
+        actual_effort: "2 days"
+        created: "2026-06-17"
+        completed: "2026-06-17"
+        implementation_status: "✅ Complete - 30 files (23 created, 5 modified), 18 tests"
+
+      - id: "GIT-02"
+        title: "Repository Listing & Selection"
+        description: "List accessible GitHub repositories, mark one for portfolio"
+        status: PLANNED
+        priority: P0
+        complexity: M
+        dependencies:
+          - "GIT-01 (must complete first)"
+        acceptance_criteria:
+          - "API lists public + private repos (per scopes)"
+          - "Repository metadata stored in database"
+          - "Private flag respected"
+        estimated_effort: "2-3 days"
+
+    infrastructure_requirements:
+      - "Redis caching for GitHub API responses"
+      - "GitHub OAuth app credentials (env vars)"
+      - "Job queue for repo snapshots"
+
+    risks:
+      - "GitHub API rate limiting"
+      - "OAuth scope management"
+      - "Token expiration handling"
+
+  # ----------
+  # EPIC 2C: Assessment Submission & BRF (PENDING)
+  # ----------
+  epic_2c:
+    name: "Assessment Submission & BRF Loading"
+    status: NOT_STARTED
+    goal: "Allow learners to submit repos for evaluation"
+
+    stories:
+      - id: "SUB-01"
+        title: "Assessment Submission Endpoint"
+        description: "POST endpoint to submit repo for evaluation with BRF version"
+        status: PLANNED
+        priority: P0
+        complexity: M
+        dependencies:
+          - "GIT-02 (repository selection)"
+          - "BRF-02 (BRF loader)"
+
+      - id: "BRF-02"
+        title: "BRF YAML Loader"
+        description: "Load BRF specification by version during evaluation"
+        status: PLANNED
+        priority: P0
+        complexity: S
+        dependencies:
+          - "BRF specification (complete)"
+
+  sprint_goal: "Complete Epic 2A (profile/email/password), plan and ready Epic 2B (GitHub)"
+
+  # ----------
+  # INFRASTRUCTURE
+  # ----------
+  infrastructure:
+    database:
+      status: "✅ PostgreSQL 15 configured"
+      migrations:
+        - "V1: Sprint 1 auth schema (merged)"
+        - "V2: Epic 2A profile/email/password (in feature branch)"
+        - "V3: GitHub/repos schema (planned)"
+
+    cache:
+      status: "✅ Redis 7 configured"
+      use_cases:
+        - "GitHub API response caching (planned)"
+        - "Session data (planned)"
+        - "Job queue (planned)"
+
+    email:
+      status: "✅ JavaMailSender configured (Epic 2A)"
+      provider: "Gmail SMTP (configurable)"
+
+    object_storage:
+      status: "⏳ MinIO planned for Sprint 3"
+      use_case: "Repository snapshots"
+
+    job_queue:
+      status: "⏳ Redis queue planned for Sprint 3"
+      use_case: "Assessment processing"
+
+# ===================
+# SPRINTS 3 & 4 (FUTURE)
+# ===================
+sprint_3:
+  name: "Competency Evaluation Engine & Detectors"
+  status: PLANNED
+  target_start: 2026-06-30
+  target_end: 2026-07-20
+  duration_days: 21
+
+  epics:
+    - "EVAL: Competency Evaluation Engine"
+
+  stories:
+    - "EVAL-01: Worker process"
+    - "EVAL-02: Detectors (API, DB, Auth, Code, Logic, Docs, Tests)"
+    - "EVAL-03: Scoring engine"
+    - "SUB-02: Result retrieval"
+    - "SUB-03: Manual explanations"
+
+  complexity: HIGH
+  estimated_effort: "20-25 days"
+  risks:
+    - "Detector complexity (7 different detectors)"
+    - "Performance at scale"
+    - "Machine learning integration (future)"
+
+sprint_4:
+  name: "Feedback Engine, Portfolio, Progress Tracking, Admin"
+  status: PLANNED
+  target_start: 2026-07-20
+  target_end: 2026-08-03
+  duration_days: 14
+
+  epics:
+    - "FB: Feedback Engine"
+    - "PORT: Portfolio System"
+    - "PROG: Progress Tracking"
+    - "ADMIN: Admin & Operations"
+
+  stories:
+    - "FB-01: Feedback generation"
+    - "FB-02: PDF report export"
+    - "PORT-01: Portfolio flagging"
+    - "PORT-02: Public portfolio page"
+    - "PROG-01: Assessment history"
+    - "PROG-02: Re-evaluation analysis"
+    - "ADMIN-01: System health dashboard"
+    - "ADMIN-02: Manual review interface"
+
+  complexity: MEDIUM-HIGH
+  estimated_effort: "15-20 days"
+
+# ===================
+# ROLLOUT & PRODUCTION
+# ===================
+production:
+  status: "NOT READY"
+  target_date: "2026-08-15 (post-Sprint 4)"
+  pre_deployment_requirements:
+    - "All Sprints 1-4 complete"
+    - "Integration tests passing"
+    - "Security audit complete"
+    - "Load testing complete"
+    - "Documentation complete"
+    - "Runbooks created"
+    - "Monitoring configured"
+
+# ===================
+# METRICS & TRACKING
+# ===================
+project_metrics:
+  velocity:
+    sprint_1: "✅ 5 stories (AUTH-01, 02, 03, ADMIN-03, Infrastructure)"
+    sprint_2: "✅ 4 stories (PRF-01, 02, 03, 04) + 2 planned (GIT-01, 02)"
+
+  quality:
+    unit_tests: "✅ 38 (Sprint 2, Epic 2A)"
+    coverage_target: ">80% services"
+    security_compliance: "✅ 9/10 OWASP (Sprint 2)"
+
+  release_readiness:
+    sprint_1: "✅ RELEASED (main branch)"
+    sprint_2_epic_2a: "✅ READY (PR #3, awaiting merge)"
+    sprint_2_epic_2b: "⏳ READY (stories pending creation)"
+
+# ===================
+# TEAM & ASSIGNMENTS
+# ===================
+team:
+  structure: "Solo developer (per MVP assumptions)"
+  capacity: "1 developer"
+  sprint_2_focus: "Profile/Email/Password (Epic 2A) complete, prepare GitHub (Epic 2B)"
+
+# ===================
+# CRITICAL DATES
+# ===================
+key_dates:
+  sprint_1_complete: "2026-06-15"
+  epic_2a_quality_gates_pass: "2026-06-17"
+  epic_2a_merge_to_main: "2026-06-17 (pending)"
+  sprint_2_continue: "2026-06-18"
+  sprint_2_complete: "2026-06-29"
+  sprint_3_start: "2026-06-30"
+  sprint_4_start: "2026-07-20"
+  mvp_complete: "2026-08-03"
+  production_ready: "2026-08-15"
+
+# ===================
+# BLOCKERS & RISKS
+# ===================
+current_blockers:
+  - name: "Epic 2A not yet merged to main"
+    severity: BLOCKING
+    resolution_time: "5 minutes (merge PR #3)"
+    impact: "Blocks GIT-01 start"
+
+  - name: "Epic 2B stories not formalized into .md files"
+    severity: BLOCKING
+    resolution_time: "60 minutes (create Story files)"
+    impact: "Blocks GIT-01 implementation"
+
+  - name: "Epic 2 implementation readiness not assessed"
+    severity: BLOCKING
+    resolution_time: "30 minutes (readiness review)"
+    impact: "Cannot start GIT-01 without assessment"
+
+known_risks:
+  - name: "GitHub API rate limiting"
+    mitigation: "Implement Redis caching, batch requests"
+
+  - name: "Single developer bandwidth"
+    mitigation: "Clear story specs, automated testing"
+
+  - name: "Detector complexity in Sprint 3"
+    mitigation: "Modular detector architecture, thorough testing"
+
+# ===================
+# NEXT IMMEDIATE ACTIONS
+# ===================
+next_actions:
+  step_1:
+    name: "Sprint Planning"
+    owner: "Team Lead"
+    status: "🔄 IN PROGRESS"
+    time_estimate: "20 minutes"
+
+  step_2:
+    name: "Create Epic 2 Story Files"
+    owner: "Product Manager + Tech Lead"
+    status: "🔄 IN PROGRESS"
+    time_estimate: "60 minutes"
+    progress: "1 of 5 stories completed (GIT-01 ✅)"
+    inputs:
+      - "MVP-Epics-And-Stories.md"
+      - "Story template"
+    outputs:
+      - "Story-2.1.md (GIT-01) ✅ CREATED"
+      - "Story-2.2.md (GIT-02) ⏳ TODO"
+      - "Story-2.3.md (SUB-01) ⏳ TODO"
+      - "Story-2.4.md (BRF-02) ⏳ TODO"
+      - "Story-2.5.md (Infrastructure) ⏳ TODO"
+
+  step_3:
+    name: "Epic 2 Implementation Readiness Review"
+    owner: "Tech Lead"
+    status: "⏳ TODO"
+    time_estimate: "30 minutes"
+    output: "EPIC2_IMPLEMENTATION_READINESS.md"
+
+  step_4:
+    name: "Merge Epic 2A to Main"
+    owner: "Tech Lead"
+    status: "⏳ TODO"
+    time_estimate: "5 minutes"
+    command: "git merge --ff feature/epic1-user-profile-email-password"
+
+  step_5:
+    name: "Begin GIT-01 Implementation"
+    owner: "Backend Developer"
+    status: "⏳ READY_AFTER_STEPS_1_4"
+    time_estimate: "3-5 days"
+
+# ===================
+# SIGN-OFF
+# ===================
+created_by: "BMAD Sprint Planning Phase"
+created_date: 2026-06-17
+last_updated: 2026-06-17
+updated_by: "BMAD Story Creator - Story 2.1 Created"
+approval_status: "✅ APPROVED FOR EXECUTION"
+story_creation_status: "📝 Story-2.1.md created and ready-for-dev"

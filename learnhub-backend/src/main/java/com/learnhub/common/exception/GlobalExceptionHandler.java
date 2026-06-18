@@ -1,6 +1,10 @@
 package com.learnhub.common.exception;
 
+import com.learnhub.auth.oauth.exception.GitHubAPIException;
+import com.learnhub.auth.oauth.exception.GitHubOAuthException;
 import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
+import com.learnhub.auth.oauth.exception.InvalidAuthorizationCodeException;
+import com.learnhub.auth.oauth.exception.TokenRefreshException;
 import com.learnhub.user.exception.AccountLockedException;
 import com.learnhub.user.exception.EmailAlreadyVerifiedException;
 import com.learnhub.user.exception.InvalidTokenException;
@@ -130,6 +134,58 @@ public class GlobalExceptionHandler {
         }
 
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
+    }
+
+    @ExceptionHandler(InvalidAuthorizationCodeException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleInvalidAuthorizationCode(InvalidAuthorizationCodeException ex) {
+        log.warn("Invalid GitHub authorization code: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.UNAUTHORIZED.value())
+                        .error("INVALID_AUTHORIZATION_CODE")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(TokenRefreshException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleTokenRefresh(TokenRefreshException ex) {
+        log.warn("GitHub token refresh failed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.UNAUTHORIZED.value())
+                        .error("TOKEN_REFRESH_FAILED")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(GitHubAPIException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public ResponseEntity<ErrorResponse> handleGitHubApiException(GitHubAPIException ex) {
+        log.error("GitHub API error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_GATEWAY.value())
+                        .error("GITHUB_API_ERROR")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(GitHubOAuthException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public ResponseEntity<ErrorResponse> handleGitHubOAuthException(GitHubOAuthException ex) {
+        log.error("GitHub OAuth error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_GATEWAY.value())
+                        .error("GITHUB_OAUTH_ERROR")
+                        .message(ex.getMessage())
+                        .build());
     }
 
     @ExceptionHandler(Exception.class)

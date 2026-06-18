@@ -241,11 +241,19 @@ public class GitHubApiClient {
     /**
      * List GitHub repositories for the authenticated user.
      *
+     * GitHub API Rate Limit Responses:
+     * - 429: Too Many Requests (standard HTTP rate limit code)
+     * - X-RateLimit-Remaining: Number of requests remaining in this rate limit window
+     * - X-RateLimit-Reset: Unix timestamp when the rate limit resets
+     *
+     * See: https://docs.github.com/en/rest/overview/resources-in-the-rest-api
+     *
      * @param accessToken The access token
      * @param page Page number (1-indexed)
      * @param perPage Items per page (1-100)
      * @return List of repositories with pagination info
      * @throws GitHubOAuthException if API call fails
+     * @throws GitHubRateLimitException if rate limit is exceeded (429)
      */
     public GitHubRepositoriesResponse listRepositories(String accessToken, int page, int perPage) {
         try {
@@ -274,17 +282,16 @@ public class GitHubApiClient {
                 throw new GitHubAPIException("GitHub authorization expired. Please reconnect your account.");
             }
 
-            if (response.getStatusCode().value() == 403) {
-                // Check if it's rate limit
-                String remaining = response.getHeaders().getFirst("X-RateLimit-Remaining");
+            // GitHub returns 429 for rate limit (per API specification)
+            // See: https://docs.github.com/en/rest/overview/resources-in-the-rest-api?apiVersion=2022-11-28#rate-limiting
+            if (response.getStatusCode().value() == 429) {
                 String resetStr = response.getHeaders().getFirst("X-RateLimit-Reset");
-                if ("0".equals(remaining)) {
-                    log.warn("GitHub rate limit exceeded");
-                    throw new GitHubRateLimitException(
-                        "GitHub API rate limit exceeded",
-                        Long.parseLong(resetStr != null ? resetStr : "0")
-                    );
-                }
+                long resetTimestamp = resetStr != null ? Long.parseLong(resetStr) : System.currentTimeMillis() / 1000 + 3600;
+                log.warn("GitHub rate limit exceeded (429), reset at {}", resetTimestamp);
+                throw new GitHubRateLimitException(
+                    "GitHub API rate limit exceeded",
+                    resetTimestamp
+                );
             }
 
             if (!response.getStatusCode().is2xxSuccessful()) {
