@@ -1,5 +1,6 @@
 package com.learnhub.common.exception;
 
+import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
 import com.learnhub.user.exception.AccountLockedException;
 import com.learnhub.user.exception.EmailAlreadyVerifiedException;
 import com.learnhub.user.exception.InvalidTokenException;
@@ -110,6 +111,25 @@ public class GlobalExceptionHandler {
         response.addDetail("errors", errors);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(GitHubRateLimitException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ResponseEntity<ErrorResponse> handleGitHubRateLimit(GitHubRateLimitException ex) {
+        log.warn("GitHub rate limit exceeded");
+        ErrorResponse response = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                .error("GITHUB_RATE_LIMIT_EXCEEDED")
+                .message(ex.getMessage())
+                .build();
+
+        long resetSeconds = ex.getResetTimestamp() - (System.currentTimeMillis() / 1000);
+        if (resetSeconds > 0) {
+            response.addDetail("retry_after", resetSeconds);
+        }
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
     }
 
     @ExceptionHandler(Exception.class)

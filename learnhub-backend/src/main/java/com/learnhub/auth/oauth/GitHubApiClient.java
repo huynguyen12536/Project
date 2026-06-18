@@ -239,6 +239,140 @@ public class GitHubApiClient {
     ) {}
 
     /**
+     * List GitHub repositories for the authenticated user.
+     *
+     * @param accessToken The access token
+     * @param page Page number (1-indexed)
+     * @param perPage Items per page (1-100)
+     * @return List of repositories with pagination info
+     * @throws GitHubOAuthException if API call fails
+     */
+    public GitHubRepositoriesResponse listRepositories(String accessToken, int page, int perPage) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + accessToken);
+            headers.set("Accept", "application/json");
+            headers.set("User-Agent", "LearnHub/1.0");
+
+            String url = String.format(
+                "https://api.github.com/user/repos?page=%d&per_page=%d",
+                page, perPage
+            );
+
+            HttpEntity<String> request = new HttpEntity<>(headers);
+
+            log.debug("Fetching user repositories from GitHub");
+            ResponseEntity<String> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                request,
+                String.class
+            );
+
+            if (response.getStatusCode().value() == 401) {
+                log.warn("GitHub authorization failed (401) - token may be expired");
+                throw new GitHubAPIException("GitHub authorization expired. Please reconnect your account.");
+            }
+
+            if (response.getStatusCode().value() == 403) {
+                // Check if it's rate limit
+                String remaining = response.getHeaders().getFirst("X-RateLimit-Remaining");
+                String resetStr = response.getHeaders().getFirst("X-RateLimit-Reset");
+                if ("0".equals(remaining)) {
+                    log.warn("GitHub rate limit exceeded");
+                    throw new GitHubRateLimitException(
+                        "GitHub API rate limit exceeded",
+                        Long.parseLong(resetStr != null ? resetStr : "0")
+                    );
+                }
+            }
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                log.error("GitHub repositories API failed: {} {}", response.getStatusCode(), response.getBody());
+                throw new GitHubAPIException("GitHub API error: " + response.getStatusCode());
+            }
+
+            String responseBody = response.getBody();
+            if (responseBody == null || responseBody.isBlank()) {
+                log.error("GitHub repositories endpoint returned empty response");
+                throw new GitHubAPIException("GitHub returned empty response");
+            }
+
+            JsonNode reposArray = objectMapper.readTree(responseBody);
+            if (!reposArray.isArray()) {
+                log.error("GitHub repositories endpoint did not return an array");
+                throw new GitHubAPIException("Invalid GitHub API response format");
+            }
+
+            var repos = new java.util.ArrayList<GitHubRepository>();
+            for (JsonNode repoNode : reposArray) {
+                repos.add(new GitHubRepository(
+                    repoNode.get("id").asLong(),
+                    repoNode.get("name").asText(),
+                    repoNode.get("html_url").asText(),
+                    repoNode.has("description") && !repoNode.get("description").isNull()
+                        ? repoNode.get("description").asText()
+                        : null,
+                    repoNode.has("language") && !repoNode.get("language").isNull()
+                        ? repoNode.get("language").asText()
+                        : null,
+                    repoNode.get("pushed_at").asText(),
+                    repoNode.get("size").asInt(),
+                    repoNode.get("private").asBoolean(),
+                    repoNode.get("fork").asBoolean()
+                ));
+            }
+
+            // Extract rate limit info
+            String remaining = response.getHeaders().getFirst("X-RateLimit-Remaining");
+            String limit = response.getHeaders().getFirst("X-RateLimit-Limit");
+            String resetStr = response.getHeaders().getFirst("X-RateLimit-Reset");
+
+            int remainingInt = remaining != null ? Integer.parseInt(remaining) : 5000;
+            int limitInt = limit != null ? Integer.parseInt(limit) : 5000;
+            long resetTimestamp = resetStr != null ? Long.parseLong(resetStr) : System.currentTimeMillis() / 1000;
+
+            String linkHeader = response.getHeaders().getFirst("Link");
+            boolean hasNextPage = linkHeader != null && linkHeader.contains("rel=\"next\"");
+
+            log.info("Retrieved {} repositories from GitHub", repos.size());
+            return new GitHubRepositoriesResponse(repos, remainingInt, limitInt, resetTimestamp, hasNextPage);
+
+        } catch (GitHubRateLimitException e) {
+            throw e;
+        } catch (RestClientException | RuntimeException e) {
+            log.error("Failed to fetch GitHub repositories", e);
+            throw new GitHubAPIException("Failed to fetch repositories from GitHub", e);
+        }
+    }
+
+    /**
+     * DTO for GitHub repository.
+     */
+    public record GitHubRepository(
+        Long id,
+        String name,
+        String url,
+        String description,
+        String language,
+        String lastUpdated,
+        Integer sizeKb,
+        Boolean isPrivate,
+        Boolean isFork
+    ) {}
+
+    /**
+     * DTO for GitHub repositories response.
+     */
+    public record GitHubRepositoriesResponse(
+        java.util.List<GitHubRepository> repositories,
+        Integer rateLimitRemaining,
+        Integer rateLimitLimit,
+        Long rateLimitReset,
+        Boolean hasNextPage
+    ) {}
+
+    /**
      * DTO for GitHub user profile.
      */
     public record GitHubUserProfile(
