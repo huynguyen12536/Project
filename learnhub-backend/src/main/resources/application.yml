@@ -39,8 +39,20 @@ jwt:
 security:
   oauth:
     github:
-      client-id: ${GITHUB_CLIENT_ID:}
-      client-secret: ${GITHUB_CLIENT_SECRET:}
+      client-id: ${GITHUB_OAUTH_CLIENT_ID:}
+      client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GITHUB_OAUTH_REDIRECT_URI:http://localhost:8080/api/v1/oauth/github/callback}
+      auth-url: "https://github.com/login/oauth/authorize"
+      token-url: "https://github.com/login/oauth/access_token"
+      user-url: "https://api.github.com/user"
+      scopes: ["repo", "user:email"]
+      token-expiry-buffer-minutes: 5
+      state-token-ttl-minutes: 10
+      token-secret: ${GITHUB_TOKEN_SECRET:}
+
+github:
+  token:
+    encryption-key: ${GITHUB_TOKEN_ENCRYPTION_KEY:}
 
 brf:
   default-version: 1.0.0
