@@ -5,6 +5,9 @@ import com.learnhub.auth.oauth.exception.GitHubOAuthException;
 import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
 import com.learnhub.auth.oauth.exception.InvalidAuthorizationCodeException;
 import com.learnhub.auth.oauth.exception.TokenRefreshException;
+import com.learnhub.github.exception.RepositoryAlreadySelectedException;
+import com.learnhub.github.exception.RepositoryNotSelectedException;
+import com.learnhub.github.exception.SnapshotNotFoundException;
 import com.learnhub.user.exception.AccountLockedException;
 import com.learnhub.user.exception.EmailAlreadyVerifiedException;
 import com.learnhub.user.exception.InvalidTokenException;
@@ -184,6 +187,51 @@ public class GlobalExceptionHandler {
                         .timestamp(LocalDateTime.now())
                         .status(HttpStatus.BAD_GATEWAY.value())
                         .error("GITHUB_OAUTH_ERROR")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(RepositoryAlreadySelectedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleRepositoryAlreadySelected(
+        RepositoryAlreadySelectedException ex
+    ) {
+        log.warn("Repository already selected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.CONFLICT.value())
+                        .error("REPOSITORY_ALREADY_SELECTED")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(RepositoryNotSelectedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleRepositoryNotSelected(
+        RepositoryNotSelectedException ex
+    ) {
+        log.warn("Repository not selected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .error("REPOSITORY_NOT_SELECTED")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(SnapshotNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleSnapshotNotFound(
+        SnapshotNotFoundException ex
+    ) {
+        log.warn("Snapshot not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.NOT_FOUND.value())
+                        .error("SNAPSHOT_NOT_FOUND")
                         .message(ex.getMessage())
                         .build());
     }
