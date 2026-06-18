@@ -149,6 +149,8 @@ public class GitHubRepositoryService {
                 resetAt.toString()
             );
 
+            GitHubRepositoryResponse response = new GitHubRepositoryResponse(repos, pagination, rateLimit);
+
             // Cache the response with proper serialization
             try {
                 String serialized = objectMapper.writeValueAsString(response);
@@ -162,7 +164,6 @@ public class GitHubRepositoryService {
                 log.warn("Failed to cache repositories", e);
             }
 
-            GitHubRepositoryResponse response = new GitHubRepositoryResponse(repos, pagination, rateLimit);
             log.info("Retrieved {} repositories", repos.size());
             return response;
 

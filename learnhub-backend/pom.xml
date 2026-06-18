@@ -55,6 +55,12 @@
       <artifactId>spring-security-oauth2-client</artifactId>
     </dependency>
 
+    <!-- OAuth2 Resource Server (JWT token handling) -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-oauth2-resource-server</artifactId>
+    </dependency>
+
     <!-- JWT / JOSE -->
     <dependency>
       <groupId>com.nimbusds</groupId>
