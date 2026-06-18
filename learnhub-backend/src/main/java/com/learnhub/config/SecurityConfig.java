@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/oauth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/oauth/github/callback").permitAll()
                         .requestMatchers("/api/v1/email/verify").permitAll()
                         .requestMatchers("/api/v1/password/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health").permitAll()

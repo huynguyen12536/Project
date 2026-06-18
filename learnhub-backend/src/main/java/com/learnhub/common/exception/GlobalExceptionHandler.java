@@ -1,5 +1,6 @@
 package com.learnhub.common.exception;
 
+import com.learnhub.auth.oauth.exception.*;
 import com.learnhub.user.exception.AccountLockedException;
 import com.learnhub.user.exception.EmailAlreadyVerifiedException;
 import com.learnhub.user.exception.InvalidTokenException;
@@ -110,6 +111,88 @@ public class GlobalExceptionHandler {
         response.addDetail("errors", errors);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    // ==================
+    // OAuth Exception Handlers
+    // ==================
+
+    @ExceptionHandler(InvalidAuthorizationCodeException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleInvalidAuthorizationCode(InvalidAuthorizationCodeException ex) {
+        log.warn("Invalid authorization code: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .error("INVALID_AUTHORIZATION_CODE")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(StateTokenMismatchException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleStateTokenMismatch(StateTokenMismatchException ex) {
+        log.warn("State token mismatch: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.UNAUTHORIZED.value())
+                        .error("STATE_TOKEN_MISMATCH")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(DuplicateGitHubUserException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleDuplicateGitHubUser(DuplicateGitHubUserException ex) {
+        log.warn("Duplicate GitHub user: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.CONFLICT.value())
+                        .error("DUPLICATE_GITHUB_USER")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(GitHubAPIException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public ResponseEntity<ErrorResponse> handleGitHubAPIException(GitHubAPIException ex) {
+        log.error("GitHub API error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_GATEWAY.value())
+                        .error("GITHUB_API_ERROR")
+                        .message("GitHub service temporarily unavailable. Please try again later.")
+                        .build());
+    }
+
+    @ExceptionHandler(OAuthNotConnectedException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleOAuthNotConnected(OAuthNotConnectedException ex) {
+        log.warn("OAuth not connected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.NOT_FOUND.value())
+                        .error("OAUTH_NOT_CONNECTED")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(TokenRefreshException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleTokenRefreshException(TokenRefreshException ex) {
+        log.warn("Token refresh error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .error("TOKEN_REFRESH_ERROR")
+                        .message(ex.getMessage())
+                        .build());
     }
 
     @ExceptionHandler(Exception.class)
