@@ -1,0 +1,36 @@
+# Production Profile
+# Used for production deployment with restricted logging and security settings
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+logging:
+  level:
+    com.learnhub: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+
+# LLM Configuration: Anthropic Claude API
+learnhub:
+  llm:
+    api-key: ${LLM_API_KEY:}
+    endpoint: ${LLM_ENDPOINT:https://api.anthropic.com/v1/messages}
+    model: ${LLM_MODEL:claude-3-5-sonnet-20241022}
+    max-tokens: ${LLM_MAX_TOKENS:1000}
+    timeout-seconds: ${LLM_TIMEOUT_SECONDS:10}
+
+  # Assessment configuration
+  assessment:
+    max-concurrent-per-user: 3
+    duplicate-window-seconds: 60
+    max-sse-subscriptions-per-user: 5
+    sse-timeout-minutes: 10
+
+# Production CORS settings - restrict to production domain
+# Configure PRODUCTION_DOMAIN via environment variable
+app:
+  cors:
+    allowed-origins: "${PRODUCTION_DOMAIN:https://learnhub.example.com}"

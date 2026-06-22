@@ -1,5 +1,6 @@
 package com.learnhub.auth.oauth;
 
+import com.learnhub.auth.oauth.dto.UserOAuthResponse;
 import com.learnhub.auth.oauth.exception.*;
 import com.learnhub.user.model.User;
 import com.learnhub.user.repository.UserRepository;

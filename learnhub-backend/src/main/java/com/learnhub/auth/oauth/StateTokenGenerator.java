@@ -123,21 +123,21 @@ public class StateTokenGenerator {
         String redisKey = REDIS_PREFIX + token;
         String userIdKey = USER_ID_PREFIX + token;
 
-        try {
-            // Retrieve and delete both token and userId (one-time use)
-            String userIdStr = redisTemplate.opsForValue().getAndDelete(userIdKey);
-            redisTemplate.opsForValue().getAndDelete(redisKey);
+        // Retrieve and delete both token and userId (one-time use)
+        String userIdStr = redisTemplate.opsForValue().getAndDelete(userIdKey);
+        redisTemplate.opsForValue().getAndDelete(redisKey);
 
-            if (userIdStr != null) {
+        if (userIdStr != null) {
+            try {
                 UUID userId = UUID.fromString(userIdStr);
                 log.debug("State token validation successful, user ID extracted: {}", userId);
                 return Optional.of(userId);
-            } else {
-                log.warn("State token validation failed: userId not found or expired ({})", token);
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid UUID format in state token mapping: {}", userIdStr, e);
                 return Optional.empty();
             }
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid UUID format in state token mapping: {}", userIdStr, e);
+        } else {
+            log.warn("State token validation failed: userId not found or expired ({})", token);
             return Optional.empty();
         }
     }

@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: learnhub-backend-test
+
+  datasource:
+    # Dynamically set by AssessmentIntegrationTestBase using DynamicPropertyRegistry
+    # Default values (overridden at runtime):
+    url: jdbc:postgresql://localhost:5432/learnhub_test
+    username: test_user
+    password: test_password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Flyway handles schema
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+
+  redis:
+    # Dynamically set by AssessmentIntegrationTestBase
+    # Default values (overridden at runtime):
+    host: localhost
+    port: 6380
+    timeout: 5000ms
+    database: 0
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    default-timezone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+# Logging
+logging:
+  level:
+    root: WARN
+    com.learnhub: DEBUG
+    org.springframework.test: INFO
+    org.testcontainers: INFO
+
+# Test-specific settings
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# Disable scheduling in tests
+scheduling:
+  enabled: false

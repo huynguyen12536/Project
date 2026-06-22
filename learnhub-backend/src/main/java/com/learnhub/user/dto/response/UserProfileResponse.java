@@ -1,55 +1,76 @@
 package com.learnhub.user.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.learnhub.user.model.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
+/**
+ * DTO for user profile response.
+ *
+ * Matches API contract specification in user-profile-api-contract.md.
+ * Returns all publicly accessible user profile information.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class UserProfileResponse {
 
-    private UUID id;
-    private String email;
-    private String firstName;
-    private String lastName;
-    private String fullName;
-    private String bio;
-    private String profilePictureUrl;
-    private String phone;
-    private String location;
-    private String githubProfileUrl;
-    private Boolean emailVerified;
-    private LocalDateTime emailVerifiedAt;
-    private LocalDateTime lastLogin;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private String role;
+    private String id;
 
-    public static UserProfileResponse from(User user) {
+    private String username;
+
+    private String email;
+
+    private String firstName;
+
+    private String lastName;
+
+    private String bio;
+
+    private String avatarUrl;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    private Instant createdAt;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    private Instant updatedAt;
+
+    /**
+     * Convert User entity to UserProfileResponse DTO.
+     *
+     * @param user the user entity
+     * @return the user profile response DTO
+     */
+    public static UserProfileResponse fromUser(User user) {
         return UserProfileResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .fullName(user.getFullName())
-                .bio(user.getBio())
-                .profilePictureUrl(user.getProfilePictureUrl())
-                .phone(user.getPhone())
-                .location(user.getLocation())
-                .githubProfileUrl(user.getGithubProfileUrl())
-                .emailVerified(user.isEmailVerified())
-                .emailVerifiedAt(user.getEmailVerifiedAt())
-                .lastLogin(user.getLastLogin())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .role(user.getRole())
-                .build();
+            .id(user.getId().toString())
+            .username(user.getUsername())
+            .email(user.getEmail())
+            .firstName(user.getFirstName())
+            .lastName(user.getLastName())
+            .bio(user.getBio())
+            .avatarUrl(user.getAvatarUrl())
+            .createdAt(convertToInstant(user.getCreatedAt()))
+            .updatedAt(convertToInstant(user.getUpdatedAt()))
+            .build();
+    }
+
+    /**
+     * Convert LocalDateTime to Instant (UTC).
+     */
+    private static Instant convertToInstant(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+        return dateTime.atZone(ZoneId.of("UTC")).toInstant();
     }
 }

@@ -15,6 +15,10 @@ spring:
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=100,expireAfterWrite=24h
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -57,8 +61,18 @@ github:
 brf:
   default-version: 1.0.0
 
+assessment:
+  job-poll-timeout-seconds: 1
+  max-retries: 3
+
 server:
   port: 8080
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 60000ms
+    keep-alive-timeout: 60000ms
 
 app:
   mail:
@@ -73,3 +87,5 @@ app:
   security:
     max-failed-login-attempts: ${MAX_FAILED_LOGIN_ATTEMPTS:5}
     lockout-duration-minutes: ${LOCKOUT_DURATION_MINUTES:30}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}

@@ -1,0 +1,346 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/learnhub-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/learnhub-frontend
+
+jobs:
+  # ============================================================================
+  # STAGE 1: TEST - Run full test suite with mock LLM
+  # ============================================================================
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: learnhub_test
+          POSTGRES_USER: learnhub_test
+          POSTGRES_PASSWORD: learnhub_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run backend tests with mock LLM
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/learnhub_test
+          DATABASE_USER: learnhub_test
+          DATABASE_PASSWORD: learnhub_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          SPRING_PROFILES_ACTIVE: test
+        working-directory: ./learnhub-backend
+        run: |
+          mvn clean test \
+            -Dspring.profiles.active=test \
+            -Dspring.datasource.url=$DATABASE_URL \
+            -Dspring.datasource.username=$DATABASE_USER \
+            -Dspring.datasource.password=$DATABASE_PASSWORD \
+            -Dspring.redis.host=$REDIS_HOST \
+            -Dspring.redis.port=$REDIS_PORT \
+            -DskipITs=false
+
+      - name: Generate test report
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports
+          path: |
+            learnhub-backend/target/surefire-reports
+            learnhub-backend/target/failsafe-reports
+
+  # ============================================================================
+  # STAGE 2: BUILD - Build and push Docker images
+  # ============================================================================
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for backend
+        id: backend_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            latest
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./learnhub-backend
+          push: true
+          tags: ${{ steps.backend_meta.outputs.tags }}
+          labels: ${{ steps.backend_meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache,mode=max
+
+      - name: Extract metadata for frontend
+        id: frontend_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./learnhub-frontend
+          push: true
+          tags: ${{ steps.frontend_meta.outputs.tags }}
+          labels: ${{ steps.frontend_meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
+          build-args: |
+            VITE_API_BASE_URL=${{ secrets.PROD_API_BASE_URL }}
+
+  # ============================================================================
+  # STAGE 3: DEPLOY - Deploy to production via SSH
+  # ============================================================================
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PROD_DEPLOY_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy via SSH
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_APP_DIR: /opt/learnhub
+        run: |
+          # Copy docker-compose and scripts
+          scp -r docker-compose.yml \
+              scripts/ \
+              .env.production \
+              $PROD_USER@$PROD_HOST:$PROD_APP_DIR/
+
+          # Deploy on remote
+          ssh $PROD_USER@$PROD_HOST << 'EOF'
+          cd $PROD_APP_DIR
+
+          # Load environment
+          export $(cat .env.production | grep -v '^#' | xargs)
+
+          # Pull latest images from registry
+          docker pull ghcr.io/${{ github.repository }}/learnhub-backend:latest
+          docker pull ghcr.io/${{ github.repository }}/learnhub-frontend:latest
+
+          # Stop old services gracefully
+          docker-compose down
+
+          # Start new services (Flyway migration auto-runs)
+          docker-compose up -d
+
+          # Wait for services to be healthy
+          echo "Waiting for services to be healthy..."
+          sleep 30
+
+          # Validate deployment
+          echo "Validating database migration..."
+          if ! ./scripts/validate-database-migration.sh; then
+            echo "Database validation failed!"
+            docker-compose logs postgres
+            exit 1
+          fi
+
+          echo "Running E2E smoke tests..."
+          if ! API_BASE_URL=http://localhost:8080/api \
+               FRONTEND_URL=http://localhost:3000 \
+               ./scripts/e2e-smoke-test.sh; then
+            echo "E2E tests failed!"
+            docker-compose logs
+            exit 1
+          fi
+          EOF
+
+      - name: Verify Production Health
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_API_URL: ${{ secrets.PROD_API_BASE_URL }}
+        run: |
+          # Wait a bit for services to stabilize
+          sleep 10
+
+          # Check backend health
+          response=$(curl -s -w "\n%{http_code}" $PROD_API_URL/health)
+          http_code=$(echo "$response" | tail -n 1)
+
+          if [ "$http_code" != "200" ]; then
+            echo "Backend health check failed: HTTP $http_code"
+            exit 1
+          fi
+
+          echo "✅ Backend health check passed"
+
+  # ============================================================================
+  # STAGE 4: NOTIFY - Notify deployment status
+  # ============================================================================
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy]
+    if: always()
+
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.build.result }}" == "success" ] && \
+             [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "status=✅ SUCCESS" >> $GITHUB_OUTPUT
+            echo "color=28a745" >> $GITHUB_OUTPUT
+          else
+            echo "status=❌ FAILED" >> $GITHUB_OUTPUT
+            echo "color=cb2431" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        if: secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "Production Deployment ${{ steps.status.outputs.status }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Production Deployment ${{ steps.status.outputs.status }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Tests:*\n${{ needs.test.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Build:*\n${{ needs.build.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Deploy:*\n${{ needs.deploy.result }}"
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Create deployment annotation in Grafana
+        if: needs.deploy.result == 'success'
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          curl -X POST $GRAFANA_URL/api/annotations \
+            -H "Authorization: Bearer $GRAFANA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "Deployment: ${{ github.sha }}",
+              "tags": ["deployment", "production"],
+              "time": '$(date +%s)'000
+            }'

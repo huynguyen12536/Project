@@ -34,22 +34,4 @@ public class SkillScore {
      */
     private String language;
 
-    /**
-     * Constructor with validation for confidence range.
-     *
-     * @param skillName  Name of the skill
-     * @param confidence Confidence score (must be 0-100)
-     * @param evidence   Evidence string
-     * @param language   Primary language
-     * @throws IllegalArgumentException if confidence is outside 0-100 range
-     */
-    public SkillScore(String skillName, Integer confidence, String evidence, String language) {
-        if (confidence < 0 || confidence > 100) {
-            throw new IllegalArgumentException("Confidence must be between 0 and 100");
-        }
-        this.skillName = skillName;
-        this.confidence = confidence;
-        this.evidence = evidence;
-        this.language = language;
-    }
 }

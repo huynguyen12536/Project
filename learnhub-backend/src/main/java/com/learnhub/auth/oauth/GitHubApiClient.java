@@ -1,7 +1,12 @@
 package com.learnhub.auth.oauth;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.learnhub.auth.oauth.exception.GitHubAPIException;
+import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
+import com.learnhub.auth.oauth.exception.InvalidAuthorizationCodeException;
+import com.learnhub.auth.oauth.exception.TokenRefreshException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -102,7 +107,10 @@ public class GitHubApiClient {
 
         } catch (InvalidAuthorizationCodeException e) {
             throw e;
-        } catch (RestClientException | RuntimeException e) {
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse GitHub response", e);
+            throw new GitHubAPIException("Failed to parse GitHub OAuth response", e);
+        } catch (RestClientException e) {
             log.error("Failed to exchange code for token", e);
             throw new GitHubAPIException("Failed to communicate with GitHub OAuth endpoint", e);
         }
@@ -169,7 +177,10 @@ public class GitHubApiClient {
 
         } catch (TokenRefreshException e) {
             throw e;
-        } catch (RestClientException | RuntimeException e) {
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse GitHub response", e);
+            throw new GitHubAPIException("Failed to parse GitHub token refresh response", e);
+        } catch (RestClientException e) {
             log.error("Failed to refresh GitHub token", e);
             throw new GitHubAPIException("Failed to refresh GitHub token", e);
         }
@@ -223,7 +234,10 @@ public class GitHubApiClient {
             log.info("Retrieved GitHub user profile: login={}, id={}", login, id);
             return new GitHubUserProfile(id, login, email, avatarUrl);
 
-        } catch (RestClientException | RuntimeException e) {
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse GitHub user profile response", e);
+            throw new GitHubAPIException("Failed to parse GitHub user profile response", e);
+        } catch (RestClientException e) {
             log.error("Failed to fetch GitHub user profile", e);
             throw new GitHubAPIException("Failed to fetch GitHub user profile", e);
         }
@@ -347,7 +361,10 @@ public class GitHubApiClient {
 
         } catch (GitHubRateLimitException e) {
             throw e;
-        } catch (RestClientException | RuntimeException e) {
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse GitHub repositories response", e);
+            throw new GitHubAPIException("Failed to parse GitHub repositories response", e);
+        } catch (RestClientException e) {
             log.error("Failed to fetch GitHub repositories", e);
             throw new GitHubAPIException("Failed to fetch repositories from GitHub", e);
         }

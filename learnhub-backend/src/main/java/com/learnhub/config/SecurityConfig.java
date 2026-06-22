@@ -14,6 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
@@ -21,24 +22,36 @@ public class SecurityConfig {
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final CorsConfigurationSource corsConfigurationSource;
 
-    public SecurityConfig(JwtService jwtService, UserRepository userRepository) {
+    public SecurityConfig(
+        JwtService jwtService,
+        UserRepository userRepository,
+        CorsConfigurationSource corsConfigurationSource
+    ) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.corsConfigurationSource = corsConfigurationSource;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // Enable CORS from the centralized configuration
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Public endpoints
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/oauth/github/callback").permitAll()
                         .requestMatchers("/api/v1/email/verify").permitAll()
                         .requestMatchers("/api/v1/password/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        // CORS preflight OPTIONS requests are handled before authorization checks
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
+                        // All other requests require authentication
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults());
 

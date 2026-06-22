@@ -1,5 +1,6 @@
 package com.learnhub.common.exception;
 
+import com.learnhub.assessment.exception.AssessmentNotFoundException;
 import com.learnhub.auth.oauth.exception.GitHubAPIException;
 import com.learnhub.auth.oauth.exception.GitHubOAuthException;
 import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
@@ -232,6 +233,19 @@ public class GlobalExceptionHandler {
                         .timestamp(LocalDateTime.now())
                         .status(HttpStatus.NOT_FOUND.value())
                         .error("SNAPSHOT_NOT_FOUND")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(AssessmentNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleAssessmentNotFound(AssessmentNotFoundException ex) {
+        log.warn("Assessment not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.NOT_FOUND.value())
+                        .error("ASSESSMENT_NOT_FOUND")
                         .message(ex.getMessage())
                         .build());
     }

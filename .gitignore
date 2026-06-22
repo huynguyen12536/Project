@@ -10,3 +10,24 @@ _bmad-output
 .kilo
 .vscode
 docs
+
+# Environment files - DO NOT COMMIT
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Build artifacts
+target/
+build/
+dist/
+.claude
+node_modules/
+# OS
+.DS_Store
+Thumbs.db

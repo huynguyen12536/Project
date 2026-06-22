@@ -1,10 +1,7 @@
 package com.learnhub.user.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -14,15 +11,21 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "users", uniqueConstraints = @UniqueConstraint(columnNames = "email"))
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode
+@ToString
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
 
     @Column(nullable = false, unique = true)
     private String email;
@@ -33,11 +36,20 @@ public class User {
     @Column(nullable = false)
     private String role = "LEARNER";
 
-    // Profile Information
+    // Profile Information (Enhanced for Profile Management)
+    @Column(length = 50)
     private String firstName;
+
+    @Column(length = 50)
     private String lastName;
+
+    @Column(length = 500)
     private String bio;
-    private String profilePictureUrl;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
+    // Legacy fields (kept for backward compatibility)
     private String phone;
     private String location;
     private String githubProfileUrl;

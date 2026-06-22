@@ -1,0 +1,17 @@
+/workspace/src/test/java/com/learnhub/analysis/service/LanguageDetectionEngineTest.java
+/workspace/src/test/java/com/learnhub/analysis/service/RepositoryAnalysisServiceTest.java
+/workspace/src/test/java/com/learnhub/analysis/service/SkillExtractionEngineTest.java
+/workspace/src/test/java/com/learnhub/assessment/controller/AssessmentControllerTest.java
+/workspace/src/test/java/com/learnhub/assessment/service/AssessmentServiceTest.java
+/workspace/src/test/java/com/learnhub/auth/oauth/HmacTokenHasherTest.java
+/workspace/src/test/java/com/learnhub/auth/oauth/StateTokenGeneratorTest.java
+/workspace/src/test/java/com/learnhub/auth/oauth/TokenEncryptorTest.java
+/workspace/src/test/java/com/learnhub/github/controller/GitHubRepositoryControllerTest.java
+/workspace/src/test/java/com/learnhub/github/controller/RepositorySelectionControllerTest.java
+/workspace/src/test/java/com/learnhub/github/service/GitHubRepositoryServiceTest.java
+/workspace/src/test/java/com/learnhub/github/service/RepositorySelectionServiceTest.java
+/workspace/src/test/java/com/learnhub/github/service/RepositorySnapshotServiceTest.java
+/workspace/src/test/java/com/learnhub/user/service/AccountLockoutServiceTest.java
+/workspace/src/test/java/com/learnhub/user/service/EmailVerificationServiceTest.java
+/workspace/src/test/java/com/learnhub/user/service/PasswordResetServiceTest.java
+/workspace/src/test/java/com/learnhub/user/service/UserProfileServiceTest.java

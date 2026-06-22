@@ -1,0 +1,91 @@
+# Prometheus Configuration
+# Scrapes metrics from Spring Boot Actuator and container services
+
+global:
+  scrape_interval: 15s          # Default scrape interval
+  evaluation_interval: 15s      # Default evaluation interval
+  external_labels:
+    environment: 'production'
+    application: 'learnhub'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alert_rules.yml"
+
+scrape_configs:
+  # ============================================================================
+  # Prometheus self-monitoring
+  # ============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ============================================================================
+  # Spring Boot Backend - Micrometer Actuator Metrics
+  # ============================================================================
+  - job_name: 'learnhub-backend'
+    metrics_path: '/metrics'  # Default Actuator endpoint
+    static_configs:
+      - targets: ['backend:8080']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__scheme__]
+        target_label: scheme
+
+  # Spring Boot Custom Metrics (Actuator)
+  - job_name: 'learnhub-backend-actuator'
+    metrics_path: '/actuator/prometheus'  # Micrometer Prometheus endpoint
+    static_configs:
+      - targets: ['backend:8080']
+    scrape_interval: 5s  # More frequent for critical metrics
+    scrape_timeout: 3s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__scheme__]
+        target_label: scheme
+    metric_relabel_configs:
+      # Keep only critical assessment metrics
+      - source_labels: [__name__]
+        regex: 'process_.*|jvm_.*|spring_boot_.*|http_.*|assessment_.*|llm_.*'
+        action: keep
+
+  # ============================================================================
+  # PostgreSQL Exporter (if running separately)
+  # ============================================================================
+  # Uncomment and configure if using pg_exporter
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+
+  # ============================================================================
+  # Redis Exporter (if running separately)
+  # ============================================================================
+  # Uncomment and configure if using redis_exporter
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # ============================================================================
+  # cAdvisor - Docker Container Metrics
+  # ============================================================================
+  # Uncomment if cAdvisor is running
+  # - job_name: 'cadvisor'
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']
+  #   metrics_path: '/metrics'
+
+  # ============================================================================
+  # Node Exporter - Host Metrics (if running separately)
+  # ============================================================================
+  # Uncomment if Node Exporter is running
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']

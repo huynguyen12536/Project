@@ -6,12 +6,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.Type;
-import org.hibernate.types.JsonType;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Entity representing a point-in-time snapshot of a GitHub repository's metadata.
@@ -47,11 +46,43 @@ public class RepositorySnapshot {
     @Column(nullable = false)
     private Long totalSizeKb;
 
-    @Column(columnDefinition = "JSONB")
-    @Type(JsonType.class)
+    @Column(columnDefinition = "jsonb")
     private Map<String, Integer> languages;
+
+    @Column(nullable = true, columnDefinition = "TEXT")
+    private String filesContent;
+
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JoinColumn(name = "snapshot_id")
+    private List<FileSnapshot> files = new ArrayList<>();
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // Analysis helper methods
+    public String getLanguage() {
+        if (languages == null || languages.isEmpty()) {
+            return "Unknown";
+        }
+        return languages.entrySet().stream()
+            .max(Comparator.comparingInt(Map.Entry::getValue))
+            .map(Map.Entry::getKey)
+            .orElse("Unknown");
+    }
+
+    public String getFilesContent() {
+        return filesContent != null ? filesContent : "";
+    }
+
+    public List<FileSnapshot> getTopFiles() {
+        return files.stream()
+            .sorted(Comparator.comparingInt(FileSnapshot::getLineCount).reversed())
+            .limit(10)
+            .collect(Collectors.toList());
+    }
+
+    public Instant getCreatedAtAsInstant() {
+        return createdAt != null ? createdAt.toInstant(java.time.ZoneOffset.UTC) : Instant.now();
+    }
 }

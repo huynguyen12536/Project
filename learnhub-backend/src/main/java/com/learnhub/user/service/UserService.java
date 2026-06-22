@@ -1,0 +1,172 @@
+package com.learnhub.user.service;
+
+import com.learnhub.file.FileStorageService;
+import com.learnhub.user.dto.request.UserProfileUpdateRequest;
+import com.learnhub.user.dto.response.AvatarUploadResponse;
+import com.learnhub.user.dto.response.UserProfileResponse;
+import com.learnhub.user.model.User;
+import com.learnhub.user.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Service layer for user profile management.
+ *
+ * Handles CRUD operations, profile updates, and avatar management.
+ * Includes validation, error handling, and transaction management.
+ */
+@Service
+@Transactional
+@Slf4j
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final FileStorageService fileStorageService;
+
+    public UserService(UserRepository userRepository, FileStorageService fileStorageService) {
+        this.userRepository = userRepository;
+        this.fileStorageService = fileStorageService;
+    }
+
+    /**
+     * Retrieve user profile by ID.
+     *
+     * @param userId the user ID
+     * @return user profile response
+     * @throws IllegalArgumentException if user not found
+     */
+    @Transactional(readOnly = true)
+    public UserProfileResponse getUserProfile(UUID userId) {
+        log.debug("Fetching user profile: {}", userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        return UserProfileResponse.fromUser(user);
+    }
+
+    /**
+     * Get all users with pagination.
+     *
+     * @param pageable pagination parameters
+     * @return paginated user profiles
+     */
+    @Transactional(readOnly = true)
+    public Page<UserProfileResponse> getAllUsers(Pageable pageable) {
+        log.debug("Fetching all users with pagination: {}", pageable);
+
+        return userRepository.findAll(pageable)
+            .map(UserProfileResponse::fromUser);
+    }
+
+    /**
+     * Update user profile (all fields except avatar).
+     *
+     * @param userId the user ID
+     * @param updateRequest the update request
+     * @return updated user profile response
+     * @throws IllegalArgumentException if user not found or email duplicate
+     */
+    public UserProfileResponse updateUserProfile(UUID userId, UserProfileUpdateRequest updateRequest) {
+        log.debug("Updating user profile: {}", userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        // Check if email is being changed and if it's already taken
+        if (!user.getEmail().equals(updateRequest.getEmail())) {
+            if (userRepository.existsByEmail(updateRequest.getEmail())) {
+                log.warn("Email already in use: {}", updateRequest.getEmail());
+                throw new IllegalArgumentException("Email already in use: " + updateRequest.getEmail());
+            }
+        }
+
+        // Update user fields
+        user.setFirstName(updateRequest.getFirstName());
+        user.setLastName(updateRequest.getLastName());
+        user.setEmail(updateRequest.getEmail());
+        user.setBio(updateRequest.getBio());
+        user.setPhone(updateRequest.getPhone());
+        user.setLocation(updateRequest.getLocation());
+
+        User updatedUser = userRepository.save(user);
+        log.info("User profile updated: {}", userId);
+
+        return UserProfileResponse.fromUser(updatedUser);
+    }
+
+    /**
+     * Upload and update user avatar.
+     *
+     * @param userId the user ID
+     * @param file the avatar file
+     * @return avatar upload response with new URL
+     * @throws IllegalArgumentException if user not found or file invalid
+     * @throws IOException if file upload fails
+     */
+    public AvatarUploadResponse uploadAvatar(UUID userId, MultipartFile file) throws IOException {
+        log.debug("Uploading avatar for user: {}", userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        // Delete old avatar if exists
+        if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+            try {
+                fileStorageService.deleteFile(user.getAvatarUrl());
+                log.debug("Deleted previous avatar for user: {}", userId);
+            } catch (IOException e) {
+                log.warn("Failed to delete previous avatar for user {}: {}", userId, e.getMessage());
+            }
+        }
+
+        // Upload new avatar
+        String newAvatarUrl = fileStorageService.uploadFile(file, userId);
+        user.setAvatarUrl(newAvatarUrl);
+
+        User updatedUser = userRepository.save(user);
+        log.info("Avatar uploaded successfully for user: {}", userId);
+
+        return AvatarUploadResponse.builder()
+            .message("Avatar uploaded successfully")
+            .avatarUrl(newAvatarUrl)
+            .fileSize(file.getSize())
+            .uploadedAt(Instant.now())
+            .build();
+    }
+
+    /**
+     * Delete a user (account deletion).
+     *
+     * @param userId the user ID to delete
+     * @throws IllegalArgumentException if user not found
+     */
+    public void deleteUser(UUID userId) {
+        log.debug("Deleting user account: {}", userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        // Delete avatar from storage
+        if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+            try {
+                fileStorageService.deleteFile(user.getAvatarUrl());
+                log.debug("Deleted avatar for user: {}", userId);
+            } catch (IOException e) {
+                log.warn("Failed to delete avatar for user {}: {}", userId, e.getMessage());
+            }
+        }
+
+        // Delete user from database
+        userRepository.deleteById(userId);
+        log.info("User account deleted: {}", userId);
+    }
+}
