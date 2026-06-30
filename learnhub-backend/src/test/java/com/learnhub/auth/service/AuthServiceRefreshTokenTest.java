@@ -5,6 +5,7 @@ import com.learnhub.auth.model.RefreshToken;
 import com.learnhub.auth.repository.RefreshTokenRepository;
 import com.learnhub.auth.validation.PasswordStrengthValidator;
 import com.learnhub.common.util.TokenProvider;
+import com.learnhub.notification.service.NotificationService;
 import com.learnhub.user.model.User;
 import com.learnhub.user.repository.EmailVerificationTokenRepository;
 import com.learnhub.user.repository.PasswordResetTokenRepository;
@@ -58,6 +59,7 @@ class AuthServiceRefreshTokenTest {
     @Mock private TokenHashService tokenHashService;
     @Mock private AccountLockoutService accountLockoutService;
     @Mock private EmailNotificationService emailNotificationService;
+    @Mock private NotificationService notificationService;
     @Mock private EmailVerificationTokenRepository emailVerificationTokenRepository;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock private PasswordStrengthValidator passwordStrengthValidator;
@@ -83,7 +85,7 @@ class AuthServiceRefreshTokenTest {
         authService = new AuthService(
             userRepository, passwordEncoder, jwtService,
             refreshTokenRepository, tokenHashService,
-            accountLockoutService, emailNotificationService,
+            accountLockoutService, emailNotificationService, notificationService,
             emailVerificationTokenRepository, passwordResetTokenRepository,
             passwordStrengthValidator, tokenProvider
         );

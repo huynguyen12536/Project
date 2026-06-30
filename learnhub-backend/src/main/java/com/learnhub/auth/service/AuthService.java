@@ -9,6 +9,7 @@ import com.learnhub.auth.validation.PasswordStrengthValidator;
 import com.learnhub.user.model.EmailVerificationToken;
 import com.learnhub.user.model.PasswordResetToken;
 import com.learnhub.user.model.User;
+import com.learnhub.notification.service.NotificationService;
 import com.learnhub.user.repository.EmailVerificationTokenRepository;
 import com.learnhub.user.repository.PasswordResetTokenRepository;
 import com.learnhub.user.repository.UserRepository;
@@ -49,6 +50,7 @@ public class AuthService {
     private final TokenHashService tokenHashService;
     private final AccountLockoutService accountLockoutService;
     private final EmailNotificationService emailNotificationService;
+    private final NotificationService notificationService;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordStrengthValidator passwordStrengthValidator;
@@ -77,6 +79,7 @@ public class AuthService {
         TokenHashService tokenHashService,
         AccountLockoutService accountLockoutService,
         EmailNotificationService emailNotificationService,
+        NotificationService notificationService,
         EmailVerificationTokenRepository emailVerificationTokenRepository,
         PasswordResetTokenRepository passwordResetTokenRepository,
         PasswordStrengthValidator passwordStrengthValidator,
@@ -89,6 +92,7 @@ public class AuthService {
         this.tokenHashService = tokenHashService;
         this.accountLockoutService = accountLockoutService;
         this.emailNotificationService = emailNotificationService;
+        this.notificationService = notificationService;
         this.emailVerificationTokenRepository = emailVerificationTokenRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordStrengthValidator = passwordStrengthValidator;
@@ -107,10 +111,18 @@ public class AuthService {
      */
     @Transactional
     public RegisterResponse register(String email, String password, String firstName, String lastName) {
-        // Email uniqueness check
-        if (userRepository.existsByEmail(email)) {
-            log.warn("Registration attempt for duplicate email (userId not yet known)");
-            throw new EmailAlreadyRegisteredException("Email is already registered");
+        Optional<User> existingUser = userRepository.findByEmail(email);
+        if (existingUser.isPresent()) {
+            User user = existingUser.get();
+            if (user.isEmailVerified()) {
+                log.warn("Registration attempt for duplicate verified email (userId omitted)");
+                throw new EmailAlreadyRegisteredException("Email is already registered");
+            }
+
+            updatePendingRegistration(user, password, firstName, lastName);
+            queueVerificationOtp(user);
+            log.info("Pending registration refreshed for userId: {}", user.getId());
+            return new RegisterResponse(user.getId(), user.getEmail(), user.getRole());
         }
 
         // Password strength
@@ -132,13 +144,24 @@ public class AuthService {
         User saved = userRepository.save(user);
         log.info("User registered: {}", saved.getId());
 
-        // Send activation OTP asynchronously (fire-and-forget via service boundary)
-        sendVerificationOtpInternal(saved);
+        queueVerificationOtp(saved);
 
         return new RegisterResponse(saved.getId(), saved.getEmail(), saved.getRole());
     }
 
-    private void sendVerificationOtpInternal(User user) {
+    private void updatePendingRegistration(User user, String password, String firstName, String lastName) {
+        PasswordStrengthValidator.ValidationResult strength = passwordStrengthValidator.validate(password);
+        if (!strength.valid()) {
+            throw new WeakPasswordException(strength.message());
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        userRepository.save(user);
+    }
+
+    private void queueVerificationOtp(User user) {
         try {
             String otp = tokenProvider.generateOtpCode();
             String tokenHash = tokenProvider.hashToken(otp);
@@ -154,11 +177,10 @@ public class AuthService {
             verificationToken.setAttemptCount(0);
 
             emailVerificationTokenRepository.save(verificationToken);
-            emailNotificationService.sendVerificationOtpEmail(user, otp);
-            log.info("Verification OTP email queued for userId: {}", user.getId());
+            notificationService.queueVerificationOtpEmail(user, otp);
+            log.info("Verification OTP notification queued for userId: {}", user.getId());
         } catch (Exception e) {
-            log.error("Failed to send verification OTP email for userId: {}", user.getId(), e);
-            // Non-fatal — user can request resend
+            log.error("Failed to queue verification OTP notification for userId: {}", user.getId(), e);
         }
     }
 
@@ -258,7 +280,7 @@ public class AuthService {
             return;
         }
 
-        sendVerificationOtpInternal(user);
+        queueVerificationOtp(user);
     }
 
     // =========================================================================

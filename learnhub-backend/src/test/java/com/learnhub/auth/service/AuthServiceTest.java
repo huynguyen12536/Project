@@ -7,6 +7,7 @@ import com.learnhub.auth.model.RefreshToken;
 import com.learnhub.auth.repository.RefreshTokenRepository;
 import com.learnhub.auth.validation.PasswordStrengthValidator;
 import com.learnhub.common.util.TokenProvider;
+import com.learnhub.notification.service.NotificationService;
 import com.learnhub.user.exception.AccountLockedException;
 import com.learnhub.user.model.EmailVerificationToken;
 import com.learnhub.user.model.PasswordResetToken;
@@ -65,6 +66,7 @@ class AuthServiceTest {
     @Mock private TokenHashService tokenHashService;
     @Mock private AccountLockoutService accountLockoutService;
     @Mock private EmailNotificationService emailNotificationService;
+    @Mock private NotificationService notificationService;
     @Mock private EmailVerificationTokenRepository emailVerificationTokenRepository;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock private PasswordStrengthValidator passwordStrengthValidator;
@@ -80,7 +82,7 @@ class AuthServiceTest {
         authService = new AuthService(
             userRepository, passwordEncoder, jwtService,
             refreshTokenRepository, tokenHashService,
-            accountLockoutService, emailNotificationService,
+            accountLockoutService, emailNotificationService, notificationService,
             emailVerificationTokenRepository, passwordResetTokenRepository,
             passwordStrengthValidator, tokenProvider
         );
@@ -102,7 +104,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("register: success — returns RegisterResponse with STUDENT role")
     void register_success() {
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.empty());
         when(passwordStrengthValidator.validate(anyString()))
             .thenReturn(PasswordStrengthValidator.ValidationResult.ok());
         User saved = new User();
@@ -114,19 +116,23 @@ class AuthServiceTest {
         when(tokenProvider.generateOtpCode()).thenReturn("123456");
         when(tokenProvider.hashToken("123456")).thenReturn("vtok-hash");
         when(emailVerificationTokenRepository.save(any())).thenReturn(null);
-        doNothing().when(emailNotificationService).sendVerificationOtpEmail(any(), anyString());
 
         RegisterResponse resp = authService.register("test@example.com", "Strong@Password1!", "Alice", "Smith");
 
         assertThat(resp.email()).isEqualTo("test@example.com");
         assertThat(resp.role()).isEqualTo("STUDENT");
         verify(userRepository).save(any(User.class));
+        verify(notificationService).queueVerificationOtpEmail(any(User.class), eq("123456"));
     }
 
     @Test
-    @DisplayName("register: duplicate email — throws EmailAlreadyRegisteredException")
+    @DisplayName("register: duplicate verified email — throws EmailAlreadyRegisteredException")
     void register_duplicateEmail_throws() {
-        when(userRepository.existsByEmail("dup@example.com")).thenReturn(true);
+        User existing = new User();
+        existing.setId(UUID.randomUUID());
+        existing.setEmail("dup@example.com");
+        existing.setEmailVerified(true);
+        when(userRepository.findByEmail("dup@example.com")).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() ->
             authService.register("dup@example.com", "Strong@Password1!", "Bob", "Jones")
@@ -138,7 +144,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("register: weak password — throws WeakPasswordException")
     void register_weakPassword_throws() {
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(passwordStrengthValidator.validate("weak"))
             .thenReturn(PasswordStrengthValidator.ValidationResult.fail("Password must be at least 12 characters long"));
 

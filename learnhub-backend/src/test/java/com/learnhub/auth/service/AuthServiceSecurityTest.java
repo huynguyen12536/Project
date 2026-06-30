@@ -2,6 +2,7 @@ package com.learnhub.auth.service;
 
 import com.learnhub.auth.validation.PasswordStrengthValidator;
 import com.learnhub.common.util.TokenProvider;
+import com.learnhub.notification.service.NotificationService;
 import com.learnhub.user.repository.EmailVerificationTokenRepository;
 import com.learnhub.user.repository.PasswordResetTokenRepository;
 import com.learnhub.user.repository.UserRepository;
@@ -42,6 +43,7 @@ class AuthServiceSecurityTest {
     @Mock private TokenHashService tokenHashService;
     @Mock private AccountLockoutService accountLockoutService;
     @Mock private EmailNotificationService emailNotificationService;
+    @Mock private NotificationService notificationService;
     @Mock private EmailVerificationTokenRepository emailVerificationTokenRepository;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock private PasswordStrengthValidator passwordStrengthValidator;
@@ -54,7 +56,7 @@ class AuthServiceSecurityTest {
         authService = new AuthService(
             userRepository, passwordEncoder, jwtService,
             refreshTokenRepository, tokenHashService,
-            accountLockoutService, emailNotificationService,
+            accountLockoutService, emailNotificationService, notificationService,
             emailVerificationTokenRepository, passwordResetTokenRepository,
             passwordStrengthValidator, tokenProvider
         );
@@ -89,7 +91,11 @@ class AuthServiceSecurityTest {
     @Test
     @DisplayName("SECURITY: register does not log email in error when duplicate")
     void register_duplicateEmail_doesNotThrowPIIExceptionMessage() {
-        when(userRepository.existsByEmail("existing@test.com")).thenReturn(true);
+        com.learnhub.user.model.User existing = new com.learnhub.user.model.User();
+        existing.setId(java.util.UUID.randomUUID());
+        existing.setEmail("existing@test.com");
+        existing.setEmailVerified(true);
+        when(userRepository.findByEmail("existing@test.com")).thenReturn(Optional.of(existing));
 
         // Exception message should be generic, not contain the email itself
         assertThatThrownBy(() ->
@@ -103,7 +109,7 @@ class AuthServiceSecurityTest {
     @Test
     @DisplayName("SECURITY: password is hashed with BCrypt — not stored as plaintext")
     void register_passwordHashed_notPlaintext() throws Exception {
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(passwordStrengthValidator.validate(anyString()))
             .thenReturn(PasswordStrengthValidator.ValidationResult.ok());
         when(passwordEncoder.encode("StrongPass@1234")).thenReturn("$2a$13$encoded");
