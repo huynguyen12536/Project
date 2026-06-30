@@ -44,6 +44,9 @@ public class EmailVerificationToken {
     @Column(nullable = false)
     private Boolean isExpired = false;
 
+    @Column(nullable = false)
+    private Integer attemptCount = 0;
+
     public boolean isValid() {
         return !isExpired && LocalDateTime.now().isBefore(expiresAt) && verifiedAt == null;
     }

@@ -60,6 +60,12 @@ public class AuthService {
     @Value("${app.token.verification.expiry-hours:24}")
     private long verificationTokenExpiryHours;
 
+    @Value("${app.token.verification.expiry-minutes:10}")
+    private long verificationOtpExpiryMinutes;
+
+    @Value("${app.token.verification.max-attempts:5}")
+    private int verificationOtpMaxAttempts;
+
     @Value("${app.token.reset.expiry-hours:1}")
     private long resetTokenExpiryHours;
 
@@ -126,37 +132,32 @@ public class AuthService {
         User saved = userRepository.save(user);
         log.info("User registered: {}", saved.getId());
 
-        // Send verification email asynchronously (fire-and-forget via @Async in service)
-        sendVerificationEmailInternal(saved);
+        // Send activation OTP asynchronously (fire-and-forget via service boundary)
+        sendVerificationOtpInternal(saved);
 
         return new RegisterResponse(saved.getId(), saved.getEmail(), saved.getRole());
     }
 
-    private void sendVerificationEmailInternal(User user) {
+    private void sendVerificationOtpInternal(User user) {
         try {
-            // Invalidate previous tokens
-            emailVerificationTokenRepository.findByUserId(user.getId())
-                .ifPresent(t -> {
-                    t.setIsExpired(true);
-                    emailVerificationTokenRepository.save(t);
-                });
+            String otp = tokenProvider.generateOtpCode();
+            String tokenHash = tokenProvider.hashToken(otp);
 
-            String token = tokenProvider.generateVerificationToken(user.getId());
-            String tokenHash = tokenProvider.hashToken(token);
-
-            EmailVerificationToken verificationToken = EmailVerificationToken.builder()
-                .user(user)
-                .token(token)
-                .tokenHash(tokenHash)
-                .expiresAt(LocalDateTime.now().plusHours(verificationTokenExpiryHours))
-                .isExpired(false)
-                .build();
+            EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByUserId(user.getId())
+                .orElseGet(() -> EmailVerificationToken.builder().user(user).build());
+            // Keep legacy NOT NULL/UNIQUE token column populated without storing the raw OTP.
+            verificationToken.setToken(tokenHash);
+            verificationToken.setTokenHash(tokenHash);
+            verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(verificationOtpExpiryMinutes));
+            verificationToken.setVerifiedAt(null);
+            verificationToken.setIsExpired(false);
+            verificationToken.setAttemptCount(0);
 
             emailVerificationTokenRepository.save(verificationToken);
-            emailNotificationService.sendVerificationEmail(user, token);
-            log.info("Verification email queued for userId: {}", user.getId());
+            emailNotificationService.sendVerificationOtpEmail(user, otp);
+            log.info("Verification OTP email queued for userId: {}", user.getId());
         } catch (Exception e) {
-            log.error("Failed to send verification email for userId: {}", user.getId(), e);
+            log.error("Failed to send verification OTP email for userId: {}", user.getId(), e);
             // Non-fatal — user can request resend
         }
     }
@@ -193,6 +194,71 @@ public class AuthService {
         emailVerificationTokenRepository.save(verificationToken);
 
         log.info("Email verified for userId: {}", user.getId());
+    }
+
+    /**
+     * Verify a user's email using the 6-digit OTP sent during registration.
+     */
+    @Transactional
+    public void verifyEmailOtp(String email, String otp) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new com.learnhub.user.exception.InvalidTokenException("Invalid or expired verification code"));
+
+        if (user.isEmailVerified()) {
+            return;
+        }
+
+        EmailVerificationToken verificationToken = emailVerificationTokenRepository
+            .findByUserId(user.getId())
+            .orElseThrow(() -> new com.learnhub.user.exception.InvalidTokenException("Invalid or expired verification code"));
+
+        if (!verificationToken.isValid()) {
+            throw new com.learnhub.user.exception.InvalidTokenException("Verification code has expired. Please request a new code.");
+        }
+
+        if (verificationToken.getAttemptCount() != null
+            && verificationToken.getAttemptCount() >= verificationOtpMaxAttempts) {
+            verificationToken.setIsExpired(true);
+            emailVerificationTokenRepository.save(verificationToken);
+            throw new com.learnhub.user.exception.InvalidTokenException("Too many invalid attempts. Please request a new code.");
+        }
+
+        String otpHash = tokenProvider.hashToken(otp);
+        if (!otpHash.equals(verificationToken.getTokenHash())) {
+            int attempts = verificationToken.getAttemptCount() == null ? 0 : verificationToken.getAttemptCount();
+            verificationToken.setAttemptCount(attempts + 1);
+            emailVerificationTokenRepository.save(verificationToken);
+            throw new com.learnhub.user.exception.InvalidTokenException("Invalid verification code");
+        }
+
+        user.setEmailVerified(true);
+        user.setEmailVerifiedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        verificationToken.setVerifiedAt(LocalDateTime.now());
+        verificationToken.setIsExpired(true);
+        emailVerificationTokenRepository.save(verificationToken);
+
+        log.info("Email verified via OTP for userId: {}", user.getId());
+    }
+
+    /**
+     * Issue a fresh activation OTP for an existing unverified account.
+     */
+    @Transactional
+    public void resendVerificationOtp(String email) {
+        Optional<User> maybeUser = userRepository.findByEmail(email);
+        if (maybeUser.isEmpty()) {
+            log.debug("Verification OTP resend requested for unknown email (omitted)");
+            return;
+        }
+
+        User user = maybeUser.get();
+        if (user.isEmailVerified()) {
+            return;
+        }
+
+        sendVerificationOtpInternal(user);
     }
 
     // =========================================================================

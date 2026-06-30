@@ -111,10 +111,10 @@ class AuthServiceTest {
         saved.setRole("STUDENT");
         when(userRepository.save(any())).thenReturn(saved);
         when(emailVerificationTokenRepository.findByUserId(any())).thenReturn(Optional.empty());
-        when(tokenProvider.generateVerificationToken(any())).thenReturn("vtok");
-        when(tokenProvider.hashToken("vtok")).thenReturn("vtok-hash");
+        when(tokenProvider.generateOtpCode()).thenReturn("123456");
+        when(tokenProvider.hashToken("123456")).thenReturn("vtok-hash");
         when(emailVerificationTokenRepository.save(any())).thenReturn(null);
-        doNothing().when(emailNotificationService).sendVerificationEmail(any(), anyString());
+        doNothing().when(emailNotificationService).sendVerificationOtpEmail(any(), anyString());
 
         RegisterResponse resp = authService.register("test@example.com", "Strong@Password1!", "Alice", "Smith");
 

@@ -82,6 +82,8 @@ app:
   token:
     verification:
       expiry-hours: ${TOKEN_VERIFICATION_EXPIRY_HOURS:24}
+      expiry-minutes: ${TOKEN_VERIFICATION_EXPIRY_MINUTES:10}
+      max-attempts: ${TOKEN_VERIFICATION_MAX_ATTEMPTS:5}
     reset:
       expiry-hours: ${TOKEN_RESET_EXPIRY_HOURS:24}
   security:

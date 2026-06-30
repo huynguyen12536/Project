@@ -24,6 +24,11 @@ public class TokenProvider {
         return generateSecureToken();
     }
 
+    public String generateOtpCode() {
+        int code = secureRandom.nextInt(1_000_000);
+        return String.format("%06d", code);
+    }
+
     public String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

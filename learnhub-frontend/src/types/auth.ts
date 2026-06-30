@@ -22,6 +22,8 @@ export interface AuthUser {
 
 export interface AuthResponse {
   userId: string;
+  role: string;
+  email: string;
   token: string;
   refreshToken: string;
   expiresIn: number;

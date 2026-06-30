@@ -108,8 +108,8 @@ class AuthServiceSecurityTest {
             .thenReturn(PasswordStrengthValidator.ValidationResult.ok());
         when(passwordEncoder.encode("StrongPass@1234")).thenReturn("$2a$13$encoded");
         when(emailVerificationTokenRepository.findByUserId(any())).thenReturn(Optional.empty());
-        when(tokenProvider.generateVerificationToken(any())).thenReturn("vtok");
-        when(tokenProvider.hashToken("vtok")).thenReturn("vh");
+        when(tokenProvider.generateOtpCode()).thenReturn("123456");
+        when(tokenProvider.hashToken("123456")).thenReturn("vh");
 
         com.learnhub.user.model.User saved = new com.learnhub.user.model.User();
         saved.setId(java.util.UUID.randomUUID());

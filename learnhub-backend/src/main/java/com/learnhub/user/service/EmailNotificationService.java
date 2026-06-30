@@ -29,13 +29,29 @@ public class EmailNotificationService {
             message.setFrom(fromEmail);
             message.setTo(user.getEmail());
             message.setSubject("Verify Your LearnHub Email Address");
-            message.setText(buildVerificationEmailBody(user.getFirstName(), verificationUrl));
+            message.setText(buildVerificationLinkEmailBody(user.getFirstName(), verificationUrl));
 
             mailSender.send(message);
             log.info("Verification email sent to: {}", user.getEmail());
         } catch (Exception e) {
             log.error("Failed to send verification email to: {}", user.getEmail(), e);
             throw new RuntimeException("Failed to send verification email", e);
+        }
+    }
+
+    public void sendVerificationOtpEmail(User user, String otp) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(user.getEmail());
+            message.setSubject("Your LearnHub activation code");
+            message.setText(buildVerificationOtpEmailBody(user.getFirstName(), otp));
+
+            mailSender.send(message);
+            log.info("Verification OTP email sent to: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send verification OTP email to: {}", user.getEmail(), e);
+            throw new RuntimeException("Failed to send verification OTP email", e);
         }
     }
 
@@ -57,7 +73,7 @@ public class EmailNotificationService {
         }
     }
 
-    private String buildVerificationEmailBody(String firstName, String verificationUrl) {
+    private String buildVerificationLinkEmailBody(String firstName, String verificationUrl) {
         return String.format(
                 "Hi %s,\n\n" +
                 "Welcome to LearnHub! Please verify your email by clicking the link below:\n\n" +
@@ -68,6 +84,20 @@ public class EmailNotificationService {
                 "LearnHub Team",
                 firstName != null ? firstName : "Learner",
                 verificationUrl
+        );
+    }
+
+    private String buildVerificationOtpEmailBody(String firstName, String otp) {
+        return String.format(
+                "Hi %s,\n\n" +
+                "Welcome to LearnHub! Use this one-time code to activate your account:\n\n" +
+                "%s\n\n" +
+                "This code expires in 10 minutes.\n\n" +
+                "If you didn't create this account, you can safely ignore this email.\n\n" +
+                "Best regards,\n" +
+                "LearnHub Team",
+                firstName != null ? firstName : "Learner",
+                otp
         );
     }
 

@@ -11,10 +11,14 @@
 
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
-const API_BASE_URL =
+const configuredApiBaseUrl =
   (import.meta.env.VITE_API_URL as string | undefined) ||
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
   '/api';
+
+const API_BASE_URL = configuredApiBaseUrl.replace(/\/$/, '').endsWith('/api')
+  ? configuredApiBaseUrl.replace(/\/$/, '')
+  : `${configuredApiBaseUrl.replace(/\/$/, '')}/api`;
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

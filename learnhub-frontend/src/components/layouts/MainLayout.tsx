@@ -131,7 +131,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         <button onClick={() => navigate('/login')} className="flex-none h-[42px] px-4.5 bg-white text-lh-navy border border-lh-navy font-bold text-sm rounded cursor-pointer hover:bg-[#F4F5FB]">
           {strings.login}
         </button>
-        <button onClick={() => navigate('/signup')} className="flex-none h-[42px] px-4.5 bg-lh-pink text-white border-none font-bold text-sm rounded cursor-pointer hover:bg-lh-pink-dark">
+        <button onClick={() => navigate('/register')} className="flex-none h-[42px] px-4.5 bg-lh-pink text-white border-none font-bold text-sm rounded cursor-pointer hover:bg-lh-pink-dark">
           {strings.signup}
         </button>
       </header>

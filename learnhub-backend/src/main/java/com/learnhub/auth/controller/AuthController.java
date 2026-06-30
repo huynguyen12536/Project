@@ -5,10 +5,12 @@ import com.learnhub.auth.dto.ForgotPasswordRequest;
 import com.learnhub.auth.dto.LoginRequest;
 import com.learnhub.auth.dto.RegisterRequest;
 import com.learnhub.auth.dto.RegisterResponse;
+import com.learnhub.auth.dto.ResendVerificationOtpRequest;
 import com.learnhub.auth.dto.ResetPasswordRequest;
 import com.learnhub.auth.dto.RevokeSessionsRequest;
 import com.learnhub.auth.dto.TokenRefreshResponse;
 import com.learnhub.auth.dto.VerifyEmailRequest;
+import com.learnhub.auth.dto.VerifyEmailOtpRequest;
 import com.learnhub.auth.service.AuthService;
 import com.learnhub.auth.service.RateLimitingService;
 import com.learnhub.user.exception.AccountLockedException;
@@ -62,6 +64,10 @@ public class AuthController {
     private static final int FORGOT_MAX_REQUESTS = 3;
     private static final long FORGOT_WINDOW_SECONDS = 3600L;
 
+    // Verification OTP resend: 3 requests per hour per email
+    private static final int RESEND_OTP_MAX_REQUESTS = 3;
+    private static final long RESEND_OTP_WINDOW_SECONDS = 3600L;
+
     private final AuthService authService;
     private final RateLimitingService rateLimitingService;
     private final com.learnhub.auth.service.RsaKeyManager rsaKeyManager;
@@ -114,6 +120,41 @@ public class AuthController {
             return ResponseEntity.badRequest()
                 .body(errorBody("INVALID_TOKEN", e.getMessage()));
         }
+    }
+
+    /**
+     * Verify user's email with the 6-digit OTP received by email.
+     * Errors: 400 if OTP invalid/expired/too many attempts
+     */
+    @PostMapping("/verify-email-otp")
+    public ResponseEntity<?> verifyEmailOtp(@Valid @RequestBody VerifyEmailOtpRequest request) {
+        try {
+            authService.verifyEmailOtp(request.email(), request.otp());
+            return ResponseEntity.ok(Map.of(
+                "message", "Email verified",
+                "redirectUrl", "/login"
+            ));
+        } catch (com.learnhub.user.exception.InvalidTokenException e) {
+            return ResponseEntity.badRequest()
+                .body(errorBody("INVALID_OTP", e.getMessage()));
+        }
+    }
+
+    /**
+     * Resend a fresh verification OTP. Always returns 200 to avoid email enumeration.
+     */
+    @PostMapping("/resend-verification-otp")
+    public ResponseEntity<?> resendVerificationOtp(@Valid @RequestBody ResendVerificationOtpRequest request) {
+        String rateLimitKey = "verify-otp:" + request.email().toLowerCase();
+        if (rateLimitingService.isAllowed(rateLimitKey, RESEND_OTP_MAX_REQUESTS, RESEND_OTP_WINDOW_SECONDS)) {
+            authService.resendVerificationOtp(request.email());
+        } else {
+            log.debug("Verification OTP resend rate limit reached (email key omitted)");
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "message", "If this email is pending verification, a new code has been sent."
+        ));
     }
 
     // =========================================================================
