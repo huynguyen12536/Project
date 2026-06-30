@@ -5,6 +5,7 @@ import com.learnhub.auth.dto.LoginRequest;
 import com.learnhub.auth.dto.RegisterRequest;
 import com.learnhub.auth.dto.VerifyEmailRequest;
 import com.learnhub.auth.filter.JwtAuthenticationFilter;
+import com.learnhub.auth.service.AuthCookieService;
 import com.learnhub.auth.service.AuthService;
 import com.learnhub.auth.service.JwtService;
 import com.learnhub.auth.service.RateLimitingService;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -57,6 +59,9 @@ class AuthControllerIntegrationTest {
     @MockBean
     private RsaKeyManager rsaKeyManager;
 
+    @MockBean
+    private AuthCookieService authCookieService;
+
     // Spring Security dependencies
     @MockBean
     private JwtService jwtService;
@@ -71,6 +76,14 @@ class AuthControllerIntegrationTest {
     void setUp() {
         // Default: allow all rate limit requests
         when(rateLimitingService.isAllowed(anyString(), anyInt(), anyLong())).thenReturn(true);
+        when(authCookieService.createAccessTokenCookie(anyString()))
+            .thenReturn(ResponseCookie.from("lh_access_token", "value").httpOnly(true).path("/").build());
+        when(authCookieService.createRefreshTokenCookie(anyString()))
+            .thenReturn(ResponseCookie.from("lh_refresh_token", "value").httpOnly(true).path("/api/v1/auth").build());
+        when(authCookieService.clearAccessTokenCookie())
+            .thenReturn(ResponseCookie.from("lh_access_token", "").httpOnly(true).path("/").maxAge(0).build());
+        when(authCookieService.clearRefreshTokenCookie())
+            .thenReturn(ResponseCookie.from("lh_refresh_token", "").httpOnly(true).path("/api/v1/auth").maxAge(0).build());
     }
 
     // =========================================================================
@@ -179,7 +192,8 @@ class AuthControllerIntegrationTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(req)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").value("access-jwt"))
+            .andExpect(header().exists("Set-Cookie"))
+            .andExpect(jsonPath("$.token").doesNotExist())
             .andExpect(jsonPath("$.expiresIn").value(900));
     }
 
@@ -230,10 +244,12 @@ class AuthControllerIntegrationTest {
     @DisplayName("POST /logout — 200 always (idempotent)")
     void logout_alwaysReturns200() throws Exception {
         doNothing().when(authService).logout(any());
+        when(authCookieService.extractRefreshToken(any())).thenReturn("cookie-refresh-token");
 
         mockMvc.perform(post("/api/v1/auth/logout")
             .header("Authorization", "Bearer some-refresh-token"))
             .andExpect(status().isOk())
+            .andExpect(header().exists("Set-Cookie"))
             .andExpect(jsonPath("$.message").value("Logged out"));
     }
 
@@ -279,17 +295,21 @@ class AuthControllerIntegrationTest {
         com.learnhub.auth.dto.TokenRefreshResponse resp =
             new com.learnhub.auth.dto.TokenRefreshResponse("new-access", "new-refresh", 900L);
         when(authService.refresh(anyString())).thenReturn(resp);
+        when(authCookieService.extractRefreshToken(any())).thenReturn("cookie-refresh-token");
 
         mockMvc.perform(post("/api/v1/auth/refresh")
             .header("Authorization", "Bearer old-refresh-token"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").value("new-access"))
-            .andExpect(jsonPath("$.refreshToken").value("new-refresh"));
+            .andExpect(header().exists("Set-Cookie"))
+            .andExpect(jsonPath("$.token").doesNotExist())
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
+            .andExpect(jsonPath("$.expiresIn").value(900));
     }
 
     @Test
-    @DisplayName("POST /refresh — 401 without Authorization header")
+    @DisplayName("POST /refresh — 401 without refresh cookie or fallback header")
     void refresh_noHeader_returns401() throws Exception {
+        when(authCookieService.extractRefreshToken(any())).thenReturn(null);
         mockMvc.perform(post("/api/v1/auth/refresh"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error_code").value("MISSING_TOKEN"));

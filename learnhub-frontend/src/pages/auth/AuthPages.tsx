@@ -1,56 +1,30 @@
-import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import Skeleton from '@mui/material/Skeleton';
-import AlternateEmailRoundedIcon from '@mui/icons-material/AlternateEmailRounded';
-import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
-import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
-import LockRoundedIcon from '@mui/icons-material/LockRounded';
-import MailLockRoundedIcon from '@mui/icons-material/MailLockRounded';
-import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
-import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
-import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
-import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
+import {
+  Apple,
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Globe,
+  Lock,
+  Mail,
+  Users,
+} from 'lucide-react';
 import apiClient from '../../lib/api';
-import { Badge, Button, Input, ProgressBar } from '../../ui-kit';
 import { cn } from '../../lib/cn';
+import { estimatePasswordStrength } from '../../lib/passwordStrength';
 import { useAuthStore } from '../../stores/authStore';
+import type { UserProfile } from '../../types';
+import { Button, Input } from '../../ui-kit';
 import type { AuthResponse, AuthUser, UserRole } from '../../types/auth';
 
-type AuthMode = 'login' | 'register' | 'verify';
+type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
 
 interface ApiErrorBody {
   error_code?: string;
   message?: string;
-}
-
-const authCopy: Record<AuthMode, { eyebrow: string; title: string; subtitle: string }> = {
-  login: {
-    eyebrow: 'Secure sign in',
-    title: 'Chào mừng quay lại',
-    subtitle: 'Đăng nhập để tiếp tục lộ trình học, đánh giá kỹ năng và quản lý tiến độ.',
-  },
-  register: {
-    eyebrow: 'Create account',
-    title: 'Bắt đầu với LearnHub',
-    subtitle: 'Tạo tài khoản, nhận OTP qua Gmail và kích hoạt trước khi đăng nhập.',
-  },
-  verify: {
-    eyebrow: 'Email verification',
-    title: 'Xác thực tài khoản',
-    subtitle: 'Nhập mã OTP 6 số được gửi đến email của bạn để hoàn tất kích hoạt.',
-  },
-};
-
-const featureItems = [
-  { icon: <ShieldRoundedIcon fontSize="small" />, label: 'OTP qua queue có retry' },
-  { icon: <SchoolRoundedIcon fontSize="small" />, label: 'Theo dõi lộ trình học' },
-  { icon: <CheckCircleRoundedIcon fontSize="small" />, label: 'Session bảo mật bằng JWT' },
-];
-
-function getApiMessage(error: unknown, fallback: string): string {
-  const maybe = error as { response?: { data?: ApiErrorBody } };
-  return maybe.response?.data?.message || fallback;
 }
 
 function normalizeRole(role?: string): UserRole {
@@ -61,109 +35,126 @@ function normalizeRole(role?: string): UserRole {
   return 'student';
 }
 
+function toAuthUser(profile: UserProfile | null, auth: AuthResponse): AuthUser {
+  if (!profile) {
+    return {
+      id: auth.userId,
+      email: auth.email,
+      firstName: '',
+      lastName: '',
+      role: normalizeRole(auth.role),
+    };
+  }
+
+  return {
+    id: profile.id,
+    email: profile.email,
+    firstName: profile.firstName ?? '',
+    lastName: profile.lastName ?? '',
+    role: normalizeRole(auth.role),
+    avatarUrl: profile.avatarUrl ?? undefined,
+    bio: profile.bio ?? undefined,
+  };
+}
+
+function getApiMessage(error: unknown, fallback: string): string {
+  const maybe = error as { response?: { data?: ApiErrorBody } };
+  return maybe.response?.data?.message || fallback;
+}
+
 function getInitialEmail(search: string): string {
   return new URLSearchParams(search).get('email') || '';
 }
 
-const viewMotion = {
-  initial: { opacity: 0, y: 12, scale: 0.985 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -8, scale: 0.99 },
+function getResetToken(search: string): string {
+  return new URLSearchParams(search).get('token') || '';
+}
+
+function getRedirectPath(search: string): string {
+  return new URLSearchParams(search).get('redirect') || '/dashboard';
+}
+
+function getAuthCopy(mode: AuthMode) {
+  switch (mode) {
+    case 'login':
+      return {
+        badge: 'Dang nhap',
+        title: 'Dang nhap de tiep tuc hanh trinh hoc tap cua ban',
+        description: 'Truy cap lo trinh dang hoc, noi dung da luu va tien do ca nhan trong mot giao dien thong nhat.',
+      };
+    case 'register':
+      return {
+        badge: 'Tao tai khoan',
+        title: 'Bat dau tai khoan LearnHub cho lo trinh hoc nghiem tuc',
+        description: 'Tao tai khoan moi, nhan OTP qua email va kich hoat ngay de bat dau hoc.',
+      };
+    case 'verify':
+      return {
+        badge: 'Xac thuc email',
+        title: 'Nhap ma OTP de kich hoat tai khoan',
+        description: 'Ma xac thuc gom 6 so da duoc gui vao email cua ban. Ban co the gui lai ma neu can.',
+      };
+    case 'forgot':
+      return {
+        badge: 'Quen mat khau',
+        title: 'Nhan lien ket dat lai mat khau',
+        description: 'Nhap email dang ky. Neu tai khoan ton tai, he thong se gui lien ket dat lai mat khau.',
+      };
+    case 'reset':
+      return {
+        badge: 'Dat lai mat khau',
+        title: 'Tao mat khau moi cho tai khoan cua ban',
+        description: 'Su dung mat khau dai, manh va de phan biet voi cac tai khoan khac de giu an toan.',
+      };
+  }
+}
+
+const inputClassName =
+  'h-12 w-full rounded-xl border border-lh-input bg-white px-4 text-sm text-lh-dark outline-none transition placeholder:text-lh-muted focus:border-lh-blue focus:ring-4 focus:ring-[#EEF0FB]';
+
+const pageMotion = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -12 },
 };
 
 export const AuthShell: React.FC<{ mode: AuthMode }> = ({ mode }) => {
-  const copy = authCopy[mode];
-  const [booting, setBooting] = useState(true);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setBooting(false), 260);
-    return () => window.clearTimeout(timer);
-  }, [mode]);
+  const copy = getAuthCopy(mode);
 
   return (
-    <section className="min-h-[calc(100vh-66px)] overflow-hidden bg-[#F7F8FC]">
-      <div className="mx-auto grid min-h-[calc(100vh-66px)] max-w-7xl grid-cols-1 lg:grid-cols-[minmax(420px,0.92fr)_minmax(520px,1.08fr)]">
-        <aside className="relative hidden border-r border-lh-border bg-lh-dark px-10 py-10 text-white lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-x-0 top-0 h-1 bg-lh-pink" />
-          <div>
-            <div className="mb-12 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-lh-pink text-white shadow-clay-sm">
-                <SchoolRoundedIcon />
-              </div>
-              <div>
-                <div className="text-lg font-black leading-tight">LearnHub</div>
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/50">LMS Workspace</div>
-              </div>
-            </div>
-
-            <motion.div
-              key={mode}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28 }}
-            >
-              <Badge variant="info" className="mb-5 border border-white/10 bg-white/10 text-white">
-                {copy.eyebrow}
-              </Badge>
-              <h1 className="max-w-[440px] text-[42px] font-black leading-[1.05] tracking-normal">
-                {copy.title}
-              </h1>
-              <p className="mt-5 max-w-[390px] text-base leading-7 text-[#D9DBF1]">
-                {copy.subtitle}
-              </p>
-            </motion.div>
-          </div>
-
-          <div className="space-y-3">
-            {featureItems.map((item, index) => (
-              <motion.div
-                key={item.label}
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 + index * 0.08 }}
-                className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white/85"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/10 text-lh-pink">
-                  {item.icon}
-                </span>
-                {item.label}
-              </motion.div>
-            ))}
-          </div>
-        </aside>
-
-        <main className="flex items-center justify-center px-4 py-8 sm:px-6 lg:px-12">
+    <section className="bg-lh-surface font-jakarta text-lh-dark">
+      <div className="mx-auto flex min-h-[calc(100vh-66px)] max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8 lg:py-16">
+        <main className="flex w-full items-center justify-center">
           <div className="w-full max-w-[520px]">
-            <div className="mb-6 flex items-center justify-between lg:hidden">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-lh-dark text-white">
-                  <SchoolRoundedIcon fontSize="small" />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                variants={pageMotion}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={{ duration: 0.24, ease: 'easeOut' }}
+                className="rounded-2xl border border-lh-border bg-white p-6 shadow-clay-md sm:p-8"
+              >
+                <div className="mb-6">
+                  <span className="inline-flex rounded-full bg-[#EEF0FB] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-lh-blue">
+                    {copy.badge}
+                  </span>
+                  <h1 className="mt-4 text-2xl font-black leading-tight text-lh-dark sm:text-[2rem]">
+                    {copy.title}
+                  </h1>
+                  <p className="mt-3 text-sm leading-6 text-lh-muted">
+                    {copy.description}
+                  </p>
                 </div>
-                <div className="text-base font-black text-lh-dark">LearnHub</div>
-              </div>
-              <Badge variant="info">{copy.eyebrow}</Badge>
-            </div>
 
-            <div className="rounded-lg border border-lh-border bg-white p-5 shadow-clay-md sm:p-7">
-              {booting ? (
-                <AuthSkeleton />
-              ) : (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={mode}
-                    variants={viewMotion}
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    transition={{ duration: 0.22 }}
-                  >
-                    {mode === 'login' && <LoginPanel />}
-                    {mode === 'register' && <RegisterPanel />}
-                    {mode === 'verify' && <VerifyPanel />}
-                  </motion.div>
-                </AnimatePresence>
-              )}
-            </div>
+                {mode === 'login' && <LoginPanel />}
+                {mode === 'register' && <RegisterPanel />}
+                {mode === 'verify' && <VerifyPanel />}
+                {mode === 'forgot' && <ForgotPasswordPanel />}
+                {mode === 'reset' && <ResetPasswordPanel />}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>
@@ -171,58 +162,159 @@ export const AuthShell: React.FC<{ mode: AuthMode }> = ({ mode }) => {
   );
 };
 
-const AuthSkeleton = () => (
-  <div>
-    <Skeleton variant="rounded" width={116} height={28} />
-    <Skeleton variant="text" width="78%" height={46} className="mt-4" />
-    <Skeleton variant="text" width="94%" height={24} />
-    <div className="mt-8 space-y-4">
-      <Skeleton variant="rounded" height={52} />
-      <Skeleton variant="rounded" height={52} />
-      <Skeleton variant="rounded" height={52} />
-      <Skeleton variant="rounded" height={50} />
-    </div>
-  </div>
-);
-
-const FormHeader: React.FC<{ mode: AuthMode }> = ({ mode }) => (
-  <div className="mb-7">
-    <Badge variant="info" className="mb-4 bg-lh-surface text-lh-navy">
-      {authCopy[mode].eyebrow}
-    </Badge>
-    <h2 className="text-2xl font-black leading-tight text-lh-dark sm:text-3xl">
-      {authCopy[mode].title}
-    </h2>
-    <p className="mt-2 text-sm leading-6 text-lh-muted">{authCopy[mode].subtitle}</p>
-  </div>
-);
-
-const IconInput: React.FC<React.ComponentProps<typeof Input> & { icon: React.ReactNode }> = ({
-  icon,
-  className,
-  ...props
-}) => (
-  <div className="relative">
-    <span className="pointer-events-none absolute left-3 top-[34px] z-10 flex h-8 w-8 items-center justify-center rounded-md bg-lh-surface text-lh-navy">
-      {icon}
-    </span>
-    <Input className={cn('h-12 pl-14', className)} {...props} />
-  </div>
-);
-
-const Alert: React.FC<{ tone: 'error' | 'success'; children: React.ReactNode }> = ({ tone, children }) => (
-  <motion.div
-    initial={{ opacity: 0, y: -6 }}
-    animate={{ opacity: 1, y: 0 }}
+const InlineAlert: React.FC<{ tone: 'error' | 'success'; children: React.ReactNode }> = ({ tone, children }) => (
+  <div
     className={cn(
-      'mb-4 rounded-lg border px-4 py-3 text-sm font-semibold',
+      'mb-4 rounded-xl border px-4 py-3 text-sm font-semibold',
       tone === 'error'
-        ? 'border-error-500 bg-error-50 text-error-600'
-        : 'border-success-500 bg-success-50 text-success-600'
+        ? 'border-lh-pink bg-[#FDE7EC] text-lh-pink'
+        : 'border-lh-blue bg-[#EEF0FB] text-lh-blue'
     )}
   >
     {children}
+  </div>
+);
+
+const AuthDivider = () => (
+  <div className="my-5 flex items-center gap-3">
+    <span className="h-px flex-1 bg-lh-border" />
+    <span className="text-xs font-medium uppercase tracking-[0.2em] text-lh-muted">Lua chon khac</span>
+    <span className="h-px flex-1 bg-lh-border" />
+  </div>
+);
+
+const SocialRow = () => (
+  <div className="grid grid-cols-3 gap-3">
+    <SocialButton icon={Globe} label="Google" />
+    <SocialButton icon={Users} label="Facebook" />
+    <SocialButton icon={Apple} label="Apple" />
+  </div>
+);
+
+const SocialButton: React.FC<{
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}> = ({ icon: Icon, label }) => (
+  <button
+    type="button"
+    disabled
+    className="inline-flex h-12 items-center justify-center rounded-full border border-lh-input bg-white text-lh-navy"
+    title={`${label} se duoc bat khi provider san sang`}
+  >
+    <Icon className="h-5 w-5" />
+  </button>
+);
+
+const FormField: React.FC<{
+  label: string;
+  type?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  required?: boolean;
+  hint?: string;
+}> = ({ label, type = 'text', value, onChange, placeholder, autoComplete, required = false, hint }) => (
+  <Input
+      label={label}
+      type={type}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      autoComplete={autoComplete}
+      placeholder={placeholder}
+      required={required}
+      hint={hint}
+      className={inputClassName}
+  />
+);
+
+const PasswordField: React.FC<{
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete?: string;
+  required?: boolean;
+  hint?: string;
+  showStrength?: boolean;
+}> = ({ label, value, onChange, autoComplete, required = false, hint, showStrength = false }) => {
+  const [visible, setVisible] = useState(false);
+  const strength = showStrength ? estimatePasswordStrength(value) : null;
+
+  return (
+    <div>
+      {label ? <label className="mb-2 block text-sm font-semibold text-lh-dark">{label}</label> : null}
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={autoComplete}
+          required={required}
+          className={cn(inputClassName, 'pr-12')}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((current) => !current)}
+          className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-lh-muted transition hover:bg-[#EEF0FB] hover:text-lh-blue"
+          aria-label={visible ? 'Hide password' : 'Show password'}
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      {strength && value.length > 0 && (
+        <div className="mt-3">
+          <div className="flex gap-1">
+            {[0, 1, 2, 3, 4].map((index) => (
+              <span
+                key={index}
+                className={cn(
+                  'h-1.5 flex-1 rounded-full',
+                  index <= strength.score ? 'bg-lh-pink' : 'bg-lh-border'
+                )}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-lh-muted">
+            {strength.label} - {strength.entropyBits} bits
+          </p>
+        </div>
+      )}
+      {hint && <p className="mt-2 text-xs leading-5 text-lh-muted">{hint}</p>}
+    </div>
+  );
+};
+
+const PrimaryButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }> = ({
+  children,
+  className,
+  loading = false,
+  ...props
+}) => (
+  <motion.div whileTap={{ scale: 0.985 }}>
+    <Button
+      type={props.type ?? 'button'}
+      disabled={props.disabled}
+      loading={loading}
+      size="lg"
+      fullWidth
+      className={cn(
+        'h-12 rounded-lg bg-lh-pink text-sm font-bold text-white transition hover:bg-lh-pink-dark focus-visible:ring-lh-blue',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </Button>
   </motion.div>
+);
+
+const TextButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ children, className, ...props }) => (
+  <button
+    className={cn('text-sm font-semibold text-lh-blue underline-offset-4 transition hover:underline', className)}
+    {...props}
+  >
+    {children}
+  </button>
 );
 
 const LoginPanel = () => {
@@ -231,31 +323,36 @@ const LoginPanel = () => {
   const login = useAuthStore((state) => state.login);
   const [email, setEmail] = useState(getInitialEmail(location.search));
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const redirectPath = getRedirectPath(location.search);
 
-  const onSubmit = async (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       const { data } = await apiClient.post<AuthResponse>('/v1/auth/login', { email, password });
-      const user: AuthUser = {
-        id: data.userId,
-        email: data.email,
-        firstName: '',
-        lastName: '',
-        role: normalizeRole(data.role),
-      };
+      let profile: UserProfile | null = null;
+
+      try {
+        const profileResponse = await apiClient.get<UserProfile>(`/v1/users/${data.userId}`);
+        profile = profileResponse.data;
+      } catch {
+        profile = null;
+      }
+
+      const user = toAuthUser(profile, data);
       login({ ...data, user });
-      navigate('/courses');
-    } catch (err) {
-      const code = (err as { response?: { data?: ApiErrorBody } }).response?.data?.error_code;
+      navigate(redirectPath);
+    } catch (error) {
+      const code = (error as { response?: { data?: ApiErrorBody } }).response?.data?.error_code;
       if (code === 'EMAIL_NOT_VERIFIED') {
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      setError(getApiMessage(err, 'Không thể đăng nhập. Kiểm tra lại email và mật khẩu.'));
+      setError(getApiMessage(error, 'Khong the dang nhap. Vui long kiem tra lai email va mat khau.'));
     } finally {
       setLoading(false);
     }
@@ -263,57 +360,82 @@ const LoginPanel = () => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FormHeader mode="login" />
-      {error && <Alert tone="error">{error}</Alert>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
       <div className="space-y-4">
-        <IconInput
-          icon={<AlternateEmailRoundedIcon fontSize="small" />}
+        <FormField
           label="Email"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={setEmail}
+          placeholder="ban@learnhub.vn"
           autoComplete="email"
           required
         />
-        <IconInput
-          icon={<LockRoundedIcon fontSize="small" />}
-          label="Mật khẩu"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          required
-        />
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label className="text-sm font-semibold text-lh-dark">Mat khau</label>
+            <Link to="/forgot-password" className="text-sm font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+              Quen mat khau?
+            </Link>
+          </div>
+          <PasswordField value={password} onChange={setPassword} autoComplete="current-password" required />
+        </div>
       </div>
 
-      <Button className="mt-6 h-12 bg-lh-pink font-extrabold hover:bg-lh-pink-dark" size="lg" fullWidth loading={loading}>
-        Đăng nhập
-        <ArrowForwardRoundedIcon fontSize="small" />
-      </Button>
+      <PrimaryButton loading={loading} type="submit" className="mt-6">
+        Tiep tuc
+        {!loading && <ArrowRight className="h-4 w-4" />}
+      </PrimaryButton>
 
-      <p className="mt-5 text-center text-sm text-lh-muted">
-        Chưa có tài khoản? <Link className="font-extrabold text-lh-navy hover:text-lh-pink" to="/register">Đăng ký</Link>
+      <AuthDivider />
+      <SocialRow />
+
+      <p className="mt-6 text-center text-sm text-lh-muted">
+        Ban khong co tai khoan?{' '}
+        <Link to="/register" className="font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+          Dang ky
+        </Link>
       </p>
+      <div className="mt-3 text-center">
+        <TextButton type="button">Dang nhap bang ten to chuc cua ban</TextButton>
+      </div>
     </form>
   );
 };
 
 const RegisterPanel = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
-  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const onSubmit = async (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+
+    if (form.password !== form.confirmPassword) {
+      setError('Mat khau xac nhan khong khop.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await apiClient.post('/v1/auth/register', form);
+      await apiClient.post('/v1/auth/register', {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        password: form.password,
+      });
       navigate(`/verify-email?email=${encodeURIComponent(form.email)}`);
-    } catch (err) {
-      setError(getApiMessage(err, 'Không thể tạo tài khoản. Vui lòng kiểm tra thông tin.'));
+    } catch (error) {
+      setError(getApiMessage(error, 'Khong the tao tai khoan. Vui long kiem tra lai thong tin.'));
     } finally {
       setLoading(false);
     }
@@ -321,66 +443,69 @@ const RegisterPanel = () => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FormHeader mode="register" />
-      {error && <Alert tone="error">{error}</Alert>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <IconInput
-          icon={<PersonRoundedIcon fontSize="small" />}
-          label="Tên"
+        <FormField
+          label="Ten"
           value={form.firstName}
-          onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+          onChange={(value) => setForm((current) => ({ ...current, firstName: value }))}
+          placeholder="Huy"
           autoComplete="given-name"
           required
         />
-        <Input
-          className="h-12"
-          label="Họ"
+        <FormField
+          label="Ho"
           value={form.lastName}
-          onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+          onChange={(value) => setForm((current) => ({ ...current, lastName: value }))}
+          placeholder="Nguyen"
           autoComplete="family-name"
           required
         />
       </div>
 
       <div className="mt-4 space-y-4">
-        <IconInput
-          icon={<AlternateEmailRoundedIcon fontSize="small" />}
+        <FormField
           label="Email"
           type="email"
           value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          onChange={(value) => setForm((current) => ({ ...current, email: value }))}
+          placeholder="ban@learnhub.vn"
           autoComplete="email"
           required
         />
-        <IconInput
-          icon={<LockRoundedIcon fontSize="small" />}
-          label="Mật khẩu"
-          type="password"
+        <PasswordField
+          label="Mat khau"
           value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          onChange={(value) => setForm((current) => ({ ...current, password: value }))}
           autoComplete="new-password"
+          hint="Toi thieu 12 ky tu, uu tien chu hoa, chu thuong, so va ky tu dac biet."
+          required
           showStrength
-          hint="Tối thiểu 12 ký tự, nên có chữ hoa, số và ký tự đặc biệt."
+        />
+        <PasswordField
+          label="Xac nhan mat khau"
+          value={form.confirmPassword}
+          onChange={(value) => setForm((current) => ({ ...current, confirmPassword: value }))}
+          autoComplete="new-password"
           required
         />
       </div>
 
-      <div className="mt-5 rounded-lg border border-lh-border bg-lh-surface px-4 py-3">
-        <div className="mb-2 flex items-center justify-between text-xs font-extrabold uppercase tracking-[0.12em] text-lh-muted">
-          <span>Activation</span>
-          <span>OTP</span>
-        </div>
-        <ProgressBar value={66} />
+      <div className="mt-5 rounded-2xl border border-lh-border bg-lh-surface px-4 py-4 text-sm text-lh-navy">
+        Sau khi dang ky, ban se nhan ma OTP qua email de kich hoat tai khoan truoc khi dang nhap.
       </div>
 
-      <Button className="mt-6 h-12 bg-lh-pink font-extrabold hover:bg-lh-pink-dark" size="lg" fullWidth loading={loading}>
-        Tạo tài khoản
-        <ArrowForwardRoundedIcon fontSize="small" />
-      </Button>
+      <PrimaryButton loading={loading} type="submit" className="mt-6">
+        Tao tai khoan
+        {!loading && <ArrowRight className="h-4 w-4" />}
+      </PrimaryButton>
 
-      <p className="mt-5 text-center text-sm text-lh-muted">
-        Đã có tài khoản? <Link className="font-extrabold text-lh-navy hover:text-lh-pink" to="/login">Đăng nhập</Link>
+      <p className="mt-6 text-center text-sm text-lh-muted">
+        Da co tai khoan?{' '}
+        <Link to="/login" className="font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+          Dang nhap
+        </Link>
       </p>
     </form>
   );
@@ -398,20 +523,22 @@ const VerifyPanel = () => {
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  const otp = useMemo(() => digits.join(''), [digits]);
-
   useEffect(() => {
     if (cooldown <= 0) return undefined;
     const timer = window.setTimeout(() => setCooldown((value) => value - 1), 1000);
     return () => window.clearTimeout(timer);
   }, [cooldown]);
 
+  const otp = digits.join('');
+
   const setDigit = (index: number, value: string) => {
     const clean = value.replace(/\D/g, '').slice(-1);
     const next = [...digits];
     next[index] = clean;
     setDigits(next);
-    if (clean && index < 5) inputRefs.current[index + 1]?.focus();
+    if (clean && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
   };
 
   const onPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
@@ -419,41 +546,42 @@ const VerifyPanel = () => {
     if (clean.length < 2) return;
     event.preventDefault();
     setDigits(clean.padEnd(6, '').split('').slice(0, 6));
-    inputRefs.current[Math.min(clean.length, 6) - 1]?.focus();
   };
 
-  const onSubmit = async (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setMessage('');
+
     if (otp.length !== 6) {
-      setError('Vui lòng nhập đủ 6 số OTP.');
+      setError('Vui long nhap du 6 so OTP.');
       return;
     }
 
     setLoading(true);
     try {
       await apiClient.post('/v1/auth/verify-email-otp', { email, otp });
-      setMessage('Tài khoản đã được kích hoạt. Đang chuyển tới đăng nhập...');
+      setMessage('Tai khoan da duoc kich hoat. Dang chuyen sang dang nhap...');
       window.setTimeout(() => navigate(`/login?email=${encodeURIComponent(email)}`), 700);
-    } catch (err) {
-      setError(getApiMessage(err, 'OTP không hợp lệ hoặc đã hết hạn.'));
+    } catch (error) {
+      setError(getApiMessage(error, 'OTP khong hop le hoac da het han.'));
     } finally {
       setLoading(false);
     }
   };
 
-  const resend = async () => {
+  const onResend = async () => {
     setError('');
     setMessage('');
     setResending(true);
+
     try {
       await apiClient.post('/v1/auth/resend-verification-otp', { email });
-      setCooldown(60);
       setDigits(['', '', '', '', '', '']);
-      setMessage('Nếu email đang chờ xác thực, mã OTP mới đã được gửi.');
-    } catch (err) {
-      setError(getApiMessage(err, 'Không thể gửi lại OTP lúc này.'));
+      setCooldown(60);
+      setMessage('Neu email dang cho kich hoat, he thong da gui ma OTP moi.');
+    } catch (error) {
+      setError(getApiMessage(error, 'Khong the gui lai OTP luc nay.'));
     } finally {
       setResending(false);
     }
@@ -461,65 +589,198 @@ const VerifyPanel = () => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FormHeader mode="verify" />
-      {message && <Alert tone="success">{message}</Alert>}
-      {error && <Alert tone="error">{error}</Alert>}
+      {message && <InlineAlert tone="success">{message}</InlineAlert>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
-      <IconInput
-        icon={<MailLockRoundedIcon fontSize="small" />}
-        label="Email đăng ký"
+      <div className="space-y-4">
+        <FormField
+          label="Email dang ky"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          autoComplete="email"
+          required
+        />
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-lh-dark">Ma OTP</label>
+          <div className="grid grid-cols-6 gap-2">
+            {digits.map((digit, index) => (
+              <motion.input
+                key={index}
+                ref={(node) => {
+                  inputRefs.current[index] = node;
+                }}
+                value={digit}
+                onChange={(event) => setDigit(index, event.target.value)}
+                onPaste={onPaste}
+                onKeyDown={(event) => {
+                  if (event.key === 'Backspace' && !digits[index] && index > 0) {
+                    inputRefs.current[index - 1]?.focus();
+                  }
+                }}
+                whileFocus={{ scale: 1.03 }}
+                inputMode="numeric"
+                maxLength={1}
+                className="h-12 rounded-xl border border-lh-input text-center text-lg font-black text-lh-dark outline-none transition focus:border-lh-blue focus:ring-4 focus:ring-[#EEF0FB]"
+                aria-label={`OTP digit ${index + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <PrimaryButton loading={loading} type="submit" className="mt-6">
+        Kich hoat tai khoan
+        {!loading && <CheckCircle2 className="h-4 w-4" />}
+      </PrimaryButton>
+
+      <button
+        type="button"
+        onClick={onResend}
+        disabled={resending || cooldown > 0 || !email}
+        className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-lg border border-lh-input bg-white px-4 text-sm font-semibold text-lh-blue transition hover:bg-lh-surface disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {resending ? 'Dang gui lai...' : cooldown > 0 ? `Gui lai sau ${cooldown}s` : 'Gui lai ma OTP'}
+      </button>
+
+      <p className="mt-6 text-center text-sm text-lh-muted">
+        Da kich hoat?{' '}
+        <Link to="/login" className="font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+          Dang nhap
+        </Link>
+      </p>
+    </form>
+  );
+};
+
+const ForgotPasswordPanel = () => {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    setLoading(true);
+
+    try {
+      const response = await apiClient.post<{ message: string }>('/v1/auth/forgot-password', { email });
+      setMessage(response.data.message || 'Neu email ton tai, lien ket dat lai mat khau da duoc gui.');
+    } catch (error) {
+      setError(getApiMessage(error, 'Khong the gui yeu cau dat lai mat khau luc nay.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={onSubmit}>
+      {message && <InlineAlert tone="success">{message}</InlineAlert>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+      <FormField
+        label="Email"
         type="email"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={setEmail}
+        placeholder="ban@learnhub.vn"
         autoComplete="email"
         required
       />
 
-      <div className="mt-5">
-        <label className="mb-2 block text-sm font-medium text-gray-700">Mã OTP</label>
-        <div className="grid grid-cols-6 gap-2">
-          {digits.map((digit, index) => (
-            <motion.input
-              key={index}
-              ref={(node) => { inputRefs.current[index] = node; }}
-              value={digit}
-              onChange={(e) => setDigit(index, e.target.value)}
-              onPaste={onPaste}
-              onKeyDown={(e) => {
-                if (e.key === 'Backspace' && !digits[index] && index > 0) {
-                  inputRefs.current[index - 1]?.focus();
-                }
-              }}
-              whileFocus={{ scale: 1.04 }}
-              className="h-12 rounded-lg border border-lh-input text-center text-lg font-black text-lh-dark outline-none transition focus:border-lh-pink focus:ring-2 focus:ring-lh-pink/25 sm:h-14"
-              inputMode="numeric"
-              maxLength={1}
-              aria-label={`OTP digit ${index + 1}`}
-            />
-          ))}
-        </div>
+      <PrimaryButton loading={loading} type="submit" className="mt-6">
+        Gui lien ket dat lai
+        {!loading && <Mail className="h-4 w-4" />}
+      </PrimaryButton>
+
+      <p className="mt-6 text-center text-sm text-lh-muted">
+        Quay lai{' '}
+        <Link to="/login" className="font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+          Dang nhap
+        </Link>
+      </p>
+    </form>
+  );
+};
+
+const ResetPasswordPanel = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [token, setToken] = useState(getResetToken(location.search));
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (password !== confirmPassword) {
+      setError('Mat khau xac nhan khong khop.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await apiClient.post<{ message: string }>('/v1/auth/reset-password', {
+        token,
+        newPassword: password,
+      });
+      setMessage(response.data.message || 'Dat lai mat khau thanh cong.');
+      window.setTimeout(() => navigate('/login'), 900);
+    } catch (error) {
+      setError(getApiMessage(error, 'Khong the dat lai mat khau voi token hien tai.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={onSubmit}>
+      {message && <InlineAlert tone="success">{message}</InlineAlert>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+      <div className="space-y-4">
+        <FormField
+          label="Reset token"
+          value={token}
+          onChange={setToken}
+          placeholder="Token tu email"
+          required
+        />
+        <PasswordField
+          label="Mat khau moi"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          hint="Mat khau moi phai dai toi thieu 12 ky tu."
+          required
+          showStrength
+        />
+        <PasswordField
+          label="Xac nhan mat khau moi"
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          autoComplete="new-password"
+          required
+        />
       </div>
 
-      <Button className="mt-6 h-12 bg-lh-pink font-extrabold hover:bg-lh-pink-dark" size="lg" fullWidth loading={loading}>
-        Kích hoạt tài khoản
-        <CheckCircleRoundedIcon fontSize="small" />
-      </Button>
+      <PrimaryButton loading={loading} type="submit" className="mt-6">
+        Dat lai mat khau
+        {!loading && <Lock className="h-4 w-4" />}
+      </PrimaryButton>
 
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={resend}
-        disabled={resending || cooldown > 0 || !email}
-        className="mt-3 h-12 border border-lh-border bg-white font-extrabold text-lh-navy hover:bg-lh-surface"
-        fullWidth
-        loading={resending}
-      >
-        <ReplayRoundedIcon fontSize="small" />
-        {cooldown > 0 ? `Gửi lại sau ${cooldown}s` : 'Gửi lại mã OTP'}
-      </Button>
-
-      <p className="mt-5 text-center text-sm text-lh-muted">
-        Đã kích hoạt? <Link className="font-extrabold text-lh-navy hover:text-lh-pink" to="/login">Đăng nhập</Link>
+      <p className="mt-6 text-center text-sm text-lh-muted">
+        Da nho mat khau?{' '}
+        <Link to="/login" className="font-semibold text-lh-blue underline-offset-4 transition hover:underline">
+          Dang nhap
+        </Link>
       </p>
     </form>
   );
@@ -528,3 +789,7 @@ const VerifyPanel = () => {
 export const LoginPage = () => <AuthShell mode="login" />;
 export const RegisterPage = () => <AuthShell mode="register" />;
 export const VerifyEmailPage = () => <AuthShell mode="verify" />;
+export const ForgotPasswordPage = () => <AuthShell mode="forgot" />;
+export const ResetPasswordPage = () => <AuthShell mode="reset" />;
+
+export default LoginPage;

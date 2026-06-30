@@ -1,6 +1,7 @@
 package com.learnhub.config;
 
 import com.learnhub.auth.filter.JwtAuthenticationFilter;
+import com.learnhub.auth.service.AuthCookieService;
 import com.learnhub.auth.service.JwtService;
 import com.learnhub.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,15 +25,18 @@ public class SecurityConfig {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final AuthCookieService authCookieService;
 
     public SecurityConfig(
         JwtService jwtService,
         UserRepository userRepository,
+        AuthCookieService authCookieService,
         @Qualifier("corsConfigurationSource")
         CorsConfigurationSource corsConfigurationSource
     ) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.authCookieService = authCookieService;
         this.corsConfigurationSource = corsConfigurationSource;
     }
 
@@ -74,7 +78,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults());
 
-        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtService, userRepository);
+        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtService, userRepository, authCookieService);
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -1,34 +1,97 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { UserProvider } from './context/UserContext';
 import { MainLayout } from './components/layouts/MainLayout';
-import { ProfilePage } from './pages/ProfilePage';
-import HomePage from './pages/HomePage';
-import CourseCatalogPage from './pages/CourseCatalogPage';
-import CourseDetailPage from './pages/CourseDetailPage';
-import { LoginPage, RegisterPage, VerifyEmailPage } from './pages/auth/AuthPages';
+import { PageTransition } from './components/layouts/PageTransition';
+import { RouteSkeleton } from './components/layouts/RouteSkeleton';
 import { queryClient } from './lib/queryClient';
+import { useAuthStore } from './stores/authStore';
+import RequireRole from './components/auth/RequireRole';
+
+const HomePage = lazy(() => import('./pages/HomePage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const CoursePlayerPage = lazy(() => import('./pages/CoursePlayerPage'));
+const CourseCatalogPage = lazy(() => import('./pages/CourseCatalogPage'));
+const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
+const InstructorDashboardPage = lazy(() => import('./pages/instructor/InstructorDashboardPage'));
+const InstructorCoursesPage = lazy(() => import('./pages/instructor/InstructorCoursesPage'));
+const InstructorLessonsPage = lazy(() => import('./pages/instructor/InstructorLessonsPage'));
+const LoginPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.LoginPage })));
+const RegisterPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.RegisterPage })));
+const VerifyEmailPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.VerifyEmailPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.ResetPasswordPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((mod) => ({ default: mod.ProfilePage })));
+
+const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    const redirect = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const AppRoutes = () => {
+  const location = useLocation();
+  const isAuthRoute =
+    location.pathname.startsWith('/login') ||
+    location.pathname.startsWith('/register') ||
+    location.pathname.startsWith('/signup') ||
+    location.pathname.startsWith('/verify-email') ||
+    location.pathname.startsWith('/forgot-password') ||
+    location.pathname.startsWith('/reset-password');
+  const isLearningRoute = location.pathname.startsWith('/learn/');
+  const isInstructorRoute = location.pathname.startsWith('/instructor/');
+
+  const routes = (
+    <PageTransition compact={isAuthRoute || isLearningRoute || isInstructorRoute}>
+      <Suspense
+        fallback={<RouteSkeleton path={location.pathname} compact={isAuthRoute || isLearningRoute || isInstructorRoute} />}
+      >
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+          <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
+          <Route path="/learn/courses/:id" element={<RequireAuth><CoursePlayerPage /></RequireAuth>} />
+          <Route path="/instructor/dashboard" element={<RequireRole roles={['instructor']}><InstructorDashboardPage /></RequireRole>} />
+          <Route path="/instructor/courses" element={<RequireRole roles={['instructor']}><InstructorCoursesPage /></RequireRole>} />
+          <Route path="/instructor/lessons" element={<RequireRole roles={['instructor']}><InstructorLessonsPage /></RequireRole>} />
+          <Route path="/instructor" element={<Navigate to="/instructor/dashboard" replace />} />
+          <Route path="/courses" element={<CourseCatalogPage />} />
+          <Route path="/courses/:id" element={<CourseDetailPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/signup" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/profile/:userId" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+          <Route path="/profile" element={<Navigate to="/profile/me" />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Suspense>
+    </PageTransition>
+  );
+
+  if (isLearningRoute || isInstructorRoute) {
+    return routes;
+  }
+
+  return <MainLayout>{routes}</MainLayout>;
+};
 
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <UserProvider>
         <Router>
-          <MainLayout>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/courses" element={<CourseCatalogPage />} />
-              <Route path="/courses/:id" element={<CourseDetailPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/signup" element={<RegisterPage />} />
-              <Route path="/verify-email" element={<VerifyEmailPage />} />
-              <Route path="/profile/:userId" element={<ProfilePage />} />
-              <Route path="/profile" element={<Navigate to="/profile/me" />} />
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-          </MainLayout>
+          <AppRoutes />
         </Router>
       </UserProvider>
     </QueryClientProvider>

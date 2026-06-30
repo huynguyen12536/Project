@@ -16,8 +16,8 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { ProfileHeader } from '../components/profile/ProfileHeader';
 import { ProfileForm } from '../components/profile/ProfileForm';
 import { AvatarUploadZone } from '../components/profile/AvatarUploadZone';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { AlertBox } from '../components/common/AlertBox';
+import Skeleton from '@mui/material/Skeleton';
 
 export const ProfilePage: React.FC = () => {
   const { userId = 'me' } = useParams();
@@ -37,7 +37,7 @@ export const ProfilePage: React.FC = () => {
   }, [userId, loadProfile]);
 
   if (loading.isLoading && !profile) {
-    return <LoadingSpinner message="Loading profile..." />;
+    return <ProfileSkeleton />;
   }
 
   if (loading.error && !profile) {
@@ -103,3 +103,31 @@ export const ProfilePage: React.FC = () => {
     </div>
   );
 };
+
+const ProfileSkeleton = () => (
+  <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+    <div className="space-y-6 lg:col-span-1 lg:sticky lg:top-8">
+      <div className="rounded-lg border border-lh-border bg-white p-6 shadow-clay-sm">
+        <div className="flex flex-col items-center">
+          <Skeleton variant="circular" width={128} height={128} />
+          <Skeleton variant="text" width="70%" height={38} className="mt-4" />
+          <Skeleton variant="text" width="46%" height={24} />
+          <Skeleton variant="text" width="84%" height={24} className="mt-3" />
+        </div>
+      </div>
+      <div className="rounded-lg border border-lh-border bg-white p-6 shadow-clay-sm">
+        <Skeleton variant="rounded" height={170} />
+      </div>
+    </div>
+    <div className="lg:col-span-2 rounded-lg border border-lh-border bg-white p-6 shadow-clay-sm">
+      <Skeleton variant="text" width="32%" height={40} />
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <Skeleton variant="rounded" height={54} />
+        <Skeleton variant="rounded" height={54} />
+        <Skeleton variant="rounded" height={54} className="sm:col-span-2" />
+        <Skeleton variant="rounded" height={120} className="sm:col-span-2" />
+      </div>
+      <Skeleton variant="rounded" height={50} className="mt-6" />
+    </div>
+  </div>
+);

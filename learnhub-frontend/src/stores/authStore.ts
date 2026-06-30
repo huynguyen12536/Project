@@ -1,8 +1,8 @@
 /**
  * Zustand auth store (persisted to localStorage under 'auth-storage').
  *
- * Holds the authenticated user, JWT token, refresh token and derived role.
- * The persisted token is read by src/lib/api.ts for request authorization.
+ * Holds the authenticated user and derived role.
+ * Access/refresh tokens are stored in HttpOnly cookies managed by the backend.
  */
 
 import { create } from 'zustand';
@@ -32,11 +32,11 @@ export const useAuthStore = create<AuthState>()(
 
       login: (payload) =>
         set({
-          token: payload.token,
-          refreshToken: payload.refreshToken,
+          token: payload.token ?? null,
+          refreshToken: payload.refreshToken ?? null,
           user: payload.user ?? null,
           role: payload.user?.role ?? null,
-          isAuthenticated: Boolean(payload.token),
+          isAuthenticated: Boolean(payload.user?.id || payload.userId),
         }),
 
       setUser: (user) =>

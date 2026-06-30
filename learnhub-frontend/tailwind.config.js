@@ -8,6 +8,7 @@ export default {
     extend: {
       fontFamily: {
         jakarta: ['Plus Jakarta Sans', 'sans-serif'],
+        inter: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         lh: {

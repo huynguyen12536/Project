@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 export interface SearchInputProps {
@@ -29,15 +30,13 @@ export const SearchInput: React.FC<SearchInputProps> = ({
 
   return (
     <div className={cn('relative', className)}>
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-        ⌕
-      </span>
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
       <input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 pl-9 pr-3 text-sm text-[#111827] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#D9DEF2] focus:ring-4 focus:ring-[#EEF2FF]"
       />
     </div>
   );

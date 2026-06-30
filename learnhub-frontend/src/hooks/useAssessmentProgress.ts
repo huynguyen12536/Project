@@ -52,10 +52,8 @@ export const useAssessmentProgress = (
 
     try {
       const url = `${SSE_ENDPOINT.replace('{id}', assessmentId)}`;
-      const token = localStorage.getItem('authToken');
 
-      // Note: EventSource doesn't support custom headers; token should be passed via Authorization header
-      // The browser will include it automatically if the API uses the same origin
+      // EventSource relies on the browser sending the auth cookies automatically on same-origin requests.
       const eventSource = new EventSource(url);
 
       eventSource.addEventListener('progress', (event: MessageEvent) => {

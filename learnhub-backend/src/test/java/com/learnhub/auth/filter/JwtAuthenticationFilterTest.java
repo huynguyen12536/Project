@@ -1,5 +1,6 @@
 package com.learnhub.auth.filter;
 
+import com.learnhub.auth.service.AuthCookieService;
 import com.learnhub.auth.service.JwtService;
 import com.learnhub.user.model.User;
 import com.learnhub.user.repository.UserRepository;
@@ -40,11 +41,14 @@ class JwtAuthenticationFilterTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private AuthCookieService authCookieService;
+
     private JwtAuthenticationFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        filter = new JwtAuthenticationFilter(jwtService, userRepository, authCookieService);
     }
 
     /**
@@ -108,6 +112,7 @@ class JwtAuthenticationFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 
+        when(authCookieService.extractAccessToken(request)).thenReturn(null);
         when(jwtService.validateToken("invalid.token.here")).thenReturn(false);
 
         filter.doFilterInternal(request, response, chain);

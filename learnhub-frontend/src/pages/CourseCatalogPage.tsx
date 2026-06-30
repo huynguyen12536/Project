@@ -1,119 +1,234 @@
+import React, { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  ChevronDown,
+  Clock3,
+  Heart,
+  Layers3,
+  Star,
+  Users,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { CoursePreviewPopover } from '../components/courses/CoursePreviewPopover';
+import { catalogCourses } from '../data/courseCatalog';
 
-const CourseCatalogPage = () => {
-  const navigate = useNavigate();
+const categories = [
+  { name: 'Lap trinh', count: '12.400' },
+  { name: 'Thiet ke', count: '8.100' },
+  { name: 'Kinh doanh', count: '6.700' },
+  { name: 'Marketing', count: '5.300' },
+  { name: 'Du lieu & AI', count: '4.900' },
+  { name: 'Nhiep anh', count: '3.200' },
+];
 
-  const courses = [
-    { id: 1, title: 'Lập trình Web Full-Stack 2026', instr: 'Trần Minh Quân', cat: 'Lập trình', rating: '4.8', reviews: '12.430', price: '499.000₫', old: '899.000₫', color: '#2F2FA2', best: true },
-    { id: 2, title: 'UI/UX Design từ A đến Z', instr: 'Lê Thu Hà', cat: 'Thiết kế', rating: '4.7', reviews: '8.210', price: '349.000₫', old: '699.000₫', color: '#F64C72', best: false },
-    { id: 3, title: 'Phân tích dữ liệu với Python', instr: 'Phạm Đức Anh', cat: 'Dữ liệu', rating: '4.9', reviews: '15.800', price: '599.000₫', old: '999.000₫', color: '#553D67', best: true },
-    { id: 4, title: 'React & Redux Toolkit', instr: 'Nguyễn Hoàng', cat: 'Lập trình', rating: '4.6', reviews: '5.640', price: '449.000₫', old: '799.000₫', color: '#242582', best: false },
-  ];
-
-  const categories = [
-    { name: 'Lập trình', count: '12.400' },
-    { name: 'Thiết kế', count: '8.100' },
-    { name: 'Kinh doanh', count: '6.700' },
-    { name: 'Marketing', count: '5.300' },
-    { name: 'Dữ liệu & AI', count: '4.900' },
-    { name: 'Nhiếp ảnh', count: '3.200' },
-  ];
+const CatalogCourseCard: React.FC<{
+  course: (typeof catalogCourses)[number];
+  onNavigate: (courseId: number) => void;
+}> = ({ course, onNavigate }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [liked, setLiked] = useState(false);
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-6xl mx-auto px-8 py-8">
-        <div className="text-xs text-lh-muted font-semibold mb-3">
-          <button onClick={() => navigate('/')} className="cursor-pointer hover:text-lh-navy">Trang chủ</button> › <span className="text-lh-navy">Tất cả khoá học</span>
+    <>
+      <div
+        ref={cardRef}
+        className="group relative rounded-2xl border border-lh-border bg-white transition duration-200 hover:-translate-y-1 hover:border-[#D9DEF2] hover:shadow-[0_18px_40px_rgba(21,22,46,0.08)]"
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onNavigate(course.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onNavigate(course.id);
+            }
+          }}
+          className="w-full cursor-pointer text-left"
+        >
+          <div className="relative h-40 overflow-hidden rounded-t-2xl" style={{ backgroundColor: course.color }}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_48%)]" />
+            <div className="absolute left-4 top-4 inline-flex items-center rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+              {course.badge}
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/18 backdrop-blur-sm">
+                <div className="ml-1 h-0 w-0 border-b-[8px] border-l-[12px] border-t-[8px] border-b-transparent border-l-white border-t-transparent" />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="line-clamp-2 text-lg font-bold leading-7 text-[#111827]">{course.title}</div>
+                <div className="mt-2 text-sm text-lh-muted">
+                  {course.instructor} · {course.category}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLiked((current) => !current);
+                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E7EB] text-[#9CA3AF] transition hover:bg-[#F9FAFB]"
+              >
+                <Heart className={liked ? 'h-4.5 w-4.5 fill-[#F64C72] text-[#F64C72]' : 'h-4.5 w-4.5'} />
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3 text-xs font-medium text-[#6B7280]">
+              <div className="inline-flex items-center gap-1.5">
+                <Layers3 className="h-3.5 w-3.5 text-lh-blue" />
+                {course.level}
+              </div>
+              <div className="inline-flex items-center gap-1.5">
+                <Clock3 className="h-3.5 w-3.5 text-lh-blue" />
+                {course.totalHours}
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-1.5">
+              <span className="text-sm font-bold text-amber-700">{course.rating}</span>
+              <Star className="h-4 w-4 fill-[#F6A609] text-[#F6A609]" />
+              <span className="text-xs text-lh-muted">({course.reviews})</span>
+            </div>
+
+            <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#4B5563]">{course.summary}</p>
+
+            <div className="mt-5 flex items-end justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black tracking-tight text-lh-navy">{course.price}</span>
+                <span className="text-sm text-lh-muted line-through">{course.oldPrice}</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[#6B7280]">
+                <Users className="h-3.5 w-3.5 text-lh-blue" />
+                {course.reviews}
+              </div>
+            </div>
+          </div>
         </div>
-        <h1 className="text-4xl font-black mb-2">Tất cả khoá học</h1>
-        <p className="text-base text-lh-muted mb-8">8 khoá học</p>
+      </div>
 
-        <div className="flex gap-8 items-start">
-          {/* Sidebar Filters */}
-          <aside className="w-64 flex-none">
-            <div className="border border-lh-border bg-white">
-              {/* Category Filter */}
-              <div className="px-5 py-4 border-b border-[#EFF1F7]">
-                <div className="text-xs font-black uppercase tracking-wider text-lh-muted mb-3">Danh mục</div>
-                <div className="flex flex-col gap-3">
-                  {categories.map((cat) => (
-                    <label key={cat.name} className="flex items-center gap-2 text-sm font-semibold text-lh-navy cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 border border-lh-input" />
-                      {cat.name} <span className="text-lh-muted ml-auto text-xs">{cat.count}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+      <CoursePreviewPopover course={course} anchorRef={cardRef} onNavigate={onNavigate} />
+    </>
+  );
+};
 
-              {/* Level Filter */}
-              <div className="px-5 py-4 border-b border-[#EFF1F7]">
-                <div className="text-xs font-black uppercase tracking-wider text-lh-muted mb-3">Trình độ</div>
-                <div className="flex flex-col gap-3">
-                  {['Tất cả trình độ', 'Cơ bản', 'Trung cấp', 'Nâng cao'].map((level) => (
-                    <label key={level} className="flex items-center gap-2 text-sm font-semibold text-lh-navy cursor-pointer">
-                      <input type="radio" name="level" className="w-4 h-4" />
-                      {level}
-                    </label>
-                  ))}
-                </div>
-              </div>
+const CourseCatalogPage: React.FC = () => {
+  const navigate = useNavigate();
 
-              {/* Rating Filter */}
-              <div className="px-5 py-4">
-                <div className="text-xs font-black uppercase tracking-wider text-lh-muted mb-3">Đánh giá</div>
-                <div className="flex flex-col gap-3">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-lh-navy cursor-pointer">
-                    <input type="radio" name="rating" className="w-4 h-4 border-4 border-lh-blue" />
-                    <span className="text-[#F6A609]">★★★★★</span> 4.5+
+  return (
+    <div className="min-h-screen bg-[#F7F8FC]">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="text-xs font-semibold text-lh-muted">
+          <button onClick={() => navigate('/')} className="transition hover:text-lh-navy">
+            Trang chu
+          </button>{' '}
+          › <span className="text-lh-navy">Tat ca khoa hoc</span>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="font-inter text-4xl font-semibold tracking-[-0.03em] text-[#111827]">
+              Kham pha khoa hoc phu hop cho muc tieu tiep theo
+            </h1>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-[#6B7280]">
+              Re preview khi hover de xem nhanh noi dung, muc tieu va muc do phu hop truoc khi vao trang chi tiet.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm font-medium text-[#4B5563]">
+            <span>{catalogCourses.length} khoa hoc dang mo ban</span>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="space-y-5">
+            <div className="rounded-2xl border border-[#E7E9F2] bg-white p-5 shadow-[0_10px_30px_rgba(21,22,46,0.04)]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-lh-muted">Danh muc</div>
+              <div className="mt-4 space-y-3">
+                {categories.map((category) => (
+                  <label
+                    key={category.name}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-[#111827] transition hover:bg-[#F8FAFF]"
+                  >
+                    <input type="checkbox" className="h-4 w-4 rounded border-[#D1D5DB] text-lh-blue focus:ring-lh-blue" />
+                    <span>{category.name}</span>
+                    <span className="ml-auto text-xs text-lh-muted">{category.count}</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm font-semibold text-lh-navy cursor-pointer">
-                    <input type="radio" name="rating" className="w-4 h-4" />
-                    <span className="text-[#F6A609]">★★★★</span>☆ 4.0+
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#E7E9F2] bg-white p-5 shadow-[0_10px_30px_rgba(21,22,46,0.04)]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-lh-muted">Trinh do</div>
+              <div className="mt-4 space-y-3">
+                {['Tat ca trinh do', 'Co ban', 'Trung cap', 'Nang cao'].map((level) => (
+                  <label
+                    key={level}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-[#111827] transition hover:bg-[#F8FAFF]"
+                  >
+                    <input type="radio" name="level" className="h-4 w-4 border-[#D1D5DB] text-lh-blue focus:ring-lh-blue" />
+                    {level}
                   </label>
-                </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#E7E9F2] bg-white p-5 shadow-[0_10px_30px_rgba(21,22,46,0.04)]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-lh-muted">Danh gia</div>
+              <div className="mt-4 space-y-3">
+                {['4.5 tro len', '4.0 tro len'].map((label) => (
+                  <label
+                    key={label}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-[#111827] transition hover:bg-[#F8FAFF]"
+                  >
+                    <input type="radio" name="rating" className="h-4 w-4 border-[#D1D5DB] text-lh-blue focus:ring-lh-blue" />
+                    <span className="inline-flex items-center gap-1">
+                      <Star className="h-3.5 w-3.5 fill-[#F6A609] text-[#F6A609]" />
+                      {label}
+                    </span>
+                  </label>
+                ))}
               </div>
             </div>
           </aside>
 
-          {/* Results Grid */}
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#EFF1F7]">
-              <span className="text-sm text-lh-muted font-semibold">8 khoá học</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-lh-muted font-semibold">Sắp xếp:</span>
-                <button className="flex items-center gap-2 h-10 px-3.5 border border-lh-input text-sm font-bold text-lh-navy rounded cursor-pointer">
-                  Phổ biến nhất
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </button>
+          <div className="min-w-0">
+            <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-[#E7E9F2] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(21,22,46,0.04)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm font-medium text-[#6B7280]">
+                Hover vao tung the khoa hoc de xem nhanh noi dung va them vao gio hang.
               </div>
+              <button className="inline-flex items-center gap-2 rounded-xl border border-[#E5E7EB] px-4 py-2.5 text-sm font-semibold text-[#111827] transition hover:bg-[#F9FAFB]">
+                Pho bien nhat
+                <ChevronDown className="h-4 w-4" />
+              </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-5">
-              {courses.map((c) => (
-                <button key={c.id} onClick={() => navigate(`/courses/${c.id}`)} className="bg-white border border-lh-border rounded-2xl overflow-hidden hover:border-lh-muted text-left">
-                  <div className="h-36 relative flex items-center justify-center" style={{ backgroundColor: c.color }}>
-                    <div className="w-0 h-0 border-t-6 border-b-6 border-l-10 border-t-transparent border-b-transparent border-l-white ml-1"></div>
-                    {c.best && <span className="absolute top-2 left-2 bg-lh-pink text-white text-[10px] font-black px-2 py-1">BESTSELLER</span>}
-                  </div>
-                  <div className="p-4">
-                    <div className="text-base font-black mb-1 line-clamp-2">{c.title}</div>
-                    <div className="text-sm text-lh-muted mb-2">{c.instr} · {c.cat}</div>
-                    <div className="flex items-center gap-1 mb-2"><span className="text-amber-700 text-sm font-black">{c.rating}</span><span className="text-[#F6A609]">★★★★★</span><span className="text-xs text-lh-muted">({c.reviews})</span></div>
-                    <div className="flex items-center gap-2"><span className="text-xl font-black text-lh-navy">{c.price}</span><span className="text-sm text-lh-muted line-through">{c.old}</span></div>
-                  </div>
-                </button>
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {catalogCourses.map((course, index) => (
+                <motion.div
+                  key={course.id}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: index * 0.04, ease: 'easeOut' }}
+                >
+                  <CatalogCourseCard course={course} onNavigate={(courseId) => navigate(`/courses/${courseId}`)} />
+                </motion.div>
               ))}
             </div>
 
-            {/* Pagination */}
-            <div className="flex justify-center gap-2 mt-9">
-              <button className="w-11 h-11 border border-lh-input bg-white font-bold text-lh-muted rounded cursor-pointer">‹</button>
-              <button className="w-11 h-11 border-none bg-lh-navy text-white font-bold rounded cursor-pointer">1</button>
-              <button className="w-11 h-11 border border-lh-input bg-white font-bold text-lh-navy rounded cursor-pointer">2</button>
-              <button className="w-11 h-11 border border-lh-input bg-white font-bold text-lh-navy rounded cursor-pointer">3</button>
-              <button className="w-11 h-11 border border-lh-input bg-white font-bold text-lh-navy rounded cursor-pointer">›</button>
+            <div className="mt-10 flex justify-center gap-2">
+              <button className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-sm font-semibold text-lh-muted">
+                1
+              </button>
+              <button className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#D9DEF2] bg-[#EEF2FF] text-sm font-semibold text-lh-blue">
+                2
+              </button>
+              <button className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-sm font-semibold text-lh-muted">
+                3
+              </button>
             </div>
           </div>
         </div>

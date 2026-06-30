@@ -11,13 +11,16 @@ import com.learnhub.auth.dto.RevokeSessionsRequest;
 import com.learnhub.auth.dto.TokenRefreshResponse;
 import com.learnhub.auth.dto.VerifyEmailRequest;
 import com.learnhub.auth.dto.VerifyEmailOtpRequest;
+import com.learnhub.auth.service.AuthCookieService;
 import com.learnhub.auth.service.AuthService;
 import com.learnhub.auth.service.RateLimitingService;
 import com.learnhub.user.exception.AccountLockedException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -71,6 +74,7 @@ public class AuthController {
     private final AuthService authService;
     private final RateLimitingService rateLimitingService;
     private final com.learnhub.auth.service.RsaKeyManager rsaKeyManager;
+    private final AuthCookieService authCookieService;
 
     // =========================================================================
     // ENDPOINT 1: POST /api/v1/auth/register
@@ -168,7 +172,8 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(
         @Valid @RequestBody LoginRequest request,
-        HttpServletRequest httpRequest
+        HttpServletRequest httpRequest,
+        HttpServletResponse httpResponse
     ) {
         String clientIp = extractClientIp(httpRequest);
 
@@ -184,7 +189,14 @@ public class AuthController {
 
         try {
             AuthResponse response = authService.login(request.email(), request.password());
-            return ResponseEntity.ok(response);
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.createAccessTokenCookie(response.token()).toString());
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.createRefreshTokenCookie(response.refreshToken()).toString());
+            return ResponseEntity.ok(Map.of(
+                "userId", response.userId(),
+                "role", response.role(),
+                "email", response.email(),
+                "expiresIn", response.expiresIn()
+            ));
         } catch (AccountLockedException e) {
             return ResponseEntity.status(423)
                 .body(errorBody("ACCOUNT_LOCKED", e.getMessage()));
@@ -207,17 +219,15 @@ public class AuthController {
 
     /**
      * Logout — revoke current refresh token.
-     * Refresh token must be passed in Authorization header as Bearer token.
+     * Refresh token is read from HttpOnly cookie, with Authorization header as fallback.
      * Idempotent: always returns 200.
      */
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest httpRequest) {
-        String authHeader = httpRequest.getHeader("Authorization");
-        String refreshToken = null;
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            refreshToken = authHeader.substring(7);
-        }
+    public ResponseEntity<?> logout(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        String refreshToken = resolveRefreshToken(httpRequest);
         authService.logout(refreshToken);
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearAccessTokenCookie().toString());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshTokenCookie().toString());
         return ResponseEntity.ok(Map.of("message", "Logged out"));
     }
 
@@ -270,26 +280,31 @@ public class AuthController {
     // =========================================================================
 
     /**
-     * Rotate refresh token. Refresh token passed in Authorization header as Bearer.
+     * Rotate refresh token. Refresh token is read from HttpOnly cookie, with Authorization header as fallback.
      * Old token is revoked immediately before new tokens are issued.
      * Errors: 401 if token invalid/expired/revoked
      */
     @PostMapping("/refresh")
-    public ResponseEntity<?> refresh(HttpServletRequest httpRequest) {
-        String authHeader = httpRequest.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+    public ResponseEntity<?> refresh(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        String refreshToken = resolveRefreshToken(httpRequest);
+        if (refreshToken == null || refreshToken.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(errorBody("MISSING_TOKEN", "Refresh token required in Authorization header"));
+                .body(errorBody("MISSING_TOKEN", "Refresh token required in HttpOnly cookie"));
         }
-        String refreshToken = authHeader.substring(7);
         try {
             TokenRefreshResponse response = authService.refresh(refreshToken);
-            return ResponseEntity.ok(response);
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.createAccessTokenCookie(response.token()).toString());
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.createRefreshTokenCookie(response.refreshToken()).toString());
+            return ResponseEntity.ok(Map.of("expiresIn", response.expiresIn()));
         } catch (AuthService.InvalidCredentialsException e) {
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearAccessTokenCookie().toString());
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshTokenCookie().toString());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(errorBody("INVALID_REFRESH_TOKEN", e.getMessage()));
         } catch (Exception e) {
             log.error("Token refresh failed unexpectedly", e);
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearAccessTokenCookie().toString());
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshTokenCookie().toString());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(errorBody("REFRESH_FAILED", "Token refresh failed"));
         }
@@ -391,6 +406,20 @@ public class AuthController {
 
     private Map<String, String> errorBody(String errorCode, String message) {
         return Map.of("error_code", errorCode, "message", message);
+    }
+
+    private String resolveRefreshToken(HttpServletRequest request) {
+        String refreshToken = authCookieService.extractRefreshToken(request);
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            return refreshToken;
+        }
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+
+        return null;
     }
 
     private String toPemPublicKey(java.security.interfaces.RSAPublicKey publicKey) {

@@ -1,6 +1,7 @@
 package com.learnhub.auth.filter;
 
 import com.learnhub.auth.service.JwtService;
+import com.learnhub.auth.service.AuthCookieService;
 import com.learnhub.user.model.User;
 import com.learnhub.user.repository.UserRepository;
 import com.nimbusds.jwt.SignedJWT;
@@ -24,10 +25,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final AuthCookieService authCookieService;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
+    public JwtAuthenticationFilter(
+        JwtService jwtService,
+        UserRepository userRepository,
+        AuthCookieService authCookieService
+    ) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.authCookieService = authCookieService;
     }
 
     @Override
@@ -35,11 +42,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         logger.info("JWT_FILTER_INVOKED: {} {}", request.getMethod(), request.getRequestURI());
         String authHeader = request.getHeader("Authorization");
+        String token = authCookieService.extractAccessToken(request);
         logger.info("JWT_FILTER_AUTH_HEADER_PRESENT: {}", authHeader != null);
+        logger.info("JWT_FILTER_ACCESS_COOKIE_PRESENT: {}", token != null);
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
+        if (token == null && authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        }
 
+        if (token != null && !token.isBlank()) {
             if (jwtService.validateToken(token)) {
                 try {
                     SignedJWT jwt = SignedJWT.parse(token);
