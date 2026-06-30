@@ -5,8 +5,9 @@ import com.learnhub.github.entity.RepositorySnapshot;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -26,8 +27,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode
-@ToString
 public class Assessment {
 
     @Id
@@ -37,7 +36,7 @@ public class Assessment {
     @Column(nullable = false)
     private UUID userId;
 
-    @Column(nullable = false)
+    @Column(name = "snapshot_id", nullable = false)
     private UUID snapshotId;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -73,4 +72,28 @@ public class Assessment {
             status = AssessmentStatus.PENDING;
         }
     }
+
+    // Explicit getters (workaround for Lombok annotation processing in Docker)
+    public UUID getId() { return this.id; }
+    public UUID getUserId() { return this.userId; }
+    public UUID getSnapshotId() { return this.snapshotId; }
+    public RepositorySnapshot getSnapshot() { return this.snapshot; }
+    public AssessmentStatus getStatus() { return this.status; }
+    public Instant getCreatedAt() { return this.createdAt; }
+    public Instant getStartedAt() { return this.startedAt; }
+    public Instant getCompletedAt() { return this.completedAt; }
+    public String getErrorMessage() { return this.errorMessage; }
+    public RadarSeriesDto getResultsData() { return this.resultsData; }
+
+    // Explicit setters
+    public void setId(UUID id) { this.id = id; }
+    public void setUserId(UUID userId) { this.userId = userId; }
+    public void setSnapshotId(UUID snapshotId) { this.snapshotId = snapshotId; }
+    public void setSnapshot(RepositorySnapshot snapshot) { this.snapshot = snapshot; }
+    public void setStatus(AssessmentStatus status) { this.status = status; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
+    public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    public void setResultsData(RadarSeriesDto resultsData) { this.resultsData = resultsData; }
 }

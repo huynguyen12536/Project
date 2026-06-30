@@ -4,14 +4,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
 
-import java.io.StringReader;
 import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 
 @Service
@@ -41,16 +40,29 @@ public class RsaKeyManager {
     }
 
     private void loadKeys() throws Exception {
-        if (privateKeyPem != null && !privateKeyPem.isBlank() && publicKeyPem != null && !publicKeyPem.isBlank()) {
-            this.privateKey = (RSAPrivateKey) readPrivateKeyFromPem(privateKeyPem);
-            this.publicKey = (RSAPublicKey) readPublicKeyFromPem(publicKeyPem);
-        } else {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
-            kpg.initialize(2048);
-            KeyPair kp = kpg.generateKeyPair();
-            this.privateKey = (RSAPrivateKey) kp.getPrivate();
-            this.publicKey = (RSAPublicKey) kp.getPublic();
+        // Production must use external key management (e.g., AWS Secrets Manager / Vault).
+        // Fail-fast here prevents silent in-memory key generation which invalidates all JWTs on restart.
+        if (privateKeyPem == null || privateKeyPem.isBlank()) {
+            throw new IllegalStateException(
+                "FATAL: jwt.rsa.private-key-file is not configured. " +
+                "Configure the RSA private key via AWS Secrets Manager or equivalent secret store. " +
+                "In-memory key generation is NOT permitted as it invalidates all JWTs on restart.");
         }
+        if (publicKeyPem == null || publicKeyPem.isBlank()) {
+            throw new IllegalStateException(
+                "FATAL: jwt.rsa.public-key-file is not configured. " +
+                "Configure the RSA public key via AWS Secrets Manager or equivalent secret store.");
+        }
+        this.privateKey = (RSAPrivateKey) readPrivateKeyFromPem(resolvePem(privateKeyPem));
+        this.publicKey = (RSAPublicKey) readPublicKeyFromPem(resolvePem(publicKeyPem));
+    }
+
+    private String resolvePem(String configuredValue) throws Exception {
+        Path path = Path.of(configuredValue);
+        if (Files.isRegularFile(path)) {
+            return Files.readString(path);
+        }
+        return configuredValue;
     }
 
     private RSAPrivateKey readPrivateKeyFromPem(String pem) throws Exception {

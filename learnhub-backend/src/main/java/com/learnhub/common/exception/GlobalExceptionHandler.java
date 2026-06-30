@@ -6,6 +6,7 @@ import com.learnhub.auth.oauth.exception.GitHubOAuthException;
 import com.learnhub.auth.oauth.exception.GitHubRateLimitException;
 import com.learnhub.auth.oauth.exception.InvalidAuthorizationCodeException;
 import com.learnhub.auth.oauth.exception.TokenRefreshException;
+import com.learnhub.auth.service.AuthService;
 import com.learnhub.github.exception.RepositoryAlreadySelectedException;
 import com.learnhub.github.exception.RepositoryNotSelectedException;
 import com.learnhub.github.exception.SnapshotNotFoundException;
@@ -246,6 +247,58 @@ public class GlobalExceptionHandler {
                         .timestamp(LocalDateTime.now())
                         .status(HttpStatus.NOT_FOUND.value())
                         .error("ASSESSMENT_NOT_FOUND")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(AuthService.EmailAlreadyRegisteredException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleEmailAlreadyRegistered(AuthService.EmailAlreadyRegisteredException ex) {
+        log.warn("Email already registered (details omitted for security)");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.CONFLICT.value())
+                        .error("EMAIL_ALREADY_REGISTERED")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(AuthService.WeakPasswordException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleWeakPassword(AuthService.WeakPasswordException ex) {
+        log.debug("Weak password rejected");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .error("WEAK_PASSWORD")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(AuthService.InvalidCredentialsException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentials(AuthService.InvalidCredentialsException ex) {
+        log.debug("Invalid credentials presented");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.UNAUTHORIZED.value())
+                        .error("INVALID_CREDENTIALS")
+                        .message(ex.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(AuthService.EmailNotVerifiedException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleEmailNotVerified(AuthService.EmailNotVerifiedException ex) {
+        log.debug("Login attempt with unverified email");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.builder()
+                        .timestamp(LocalDateTime.now())
+                        .status(HttpStatus.UNAUTHORIZED.value())
+                        .error("EMAIL_NOT_VERIFIED")
                         .message(ex.getMessage())
                         .build());
     }

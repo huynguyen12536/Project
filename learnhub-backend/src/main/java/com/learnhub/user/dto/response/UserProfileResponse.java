@@ -50,7 +50,7 @@ public class UserProfileResponse {
      * @param user the user entity
      * @return the user profile response DTO
      */
-    public static UserProfileResponse fromUser(User user) {
+    public static UserProfileResponse from(User user) {
         return UserProfileResponse.builder()
             .id(user.getId().toString())
             .username(user.getUsername())
@@ -62,6 +62,10 @@ public class UserProfileResponse {
             .createdAt(convertToInstant(user.getCreatedAt()))
             .updatedAt(convertToInstant(user.getUpdatedAt()))
             .build();
+    }
+
+    public static UserProfileResponse fromUser(User user) {
+        return from(user);
     }
 
     /**

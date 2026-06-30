@@ -82,8 +82,6 @@ export const useUserProfile = (
           lastName: updates.lastName || user?.lastName || '',
           email: updates.email || user?.email || '',
           bio: updates.bio || user?.bio || '',
-          phone: updates.phone || user?.phone,
-          location: updates.location || user?.location,
         };
 
         await updateUserProfile(userId, fullUpdates);

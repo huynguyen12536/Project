@@ -43,7 +43,7 @@ public class AssessmentWorker {
         Assessment assessment = null;
         try {
             assessment = assessmentRepository.findById(assessmentId)
-                .orElseThrow(() -> new AssessmentNotFoundException(assessmentId));
+                .orElseThrow(() -> new AssessmentNotFoundException("Assessment not found: " + assessmentId));
 
             RepositorySnapshot snapshot = assessment.getSnapshot();
             UUID userId = assessment.getUserId();

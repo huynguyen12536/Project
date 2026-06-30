@@ -1,6 +1,7 @@
 package com.learnhub.assessment.engine;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Registry for competency detectors.

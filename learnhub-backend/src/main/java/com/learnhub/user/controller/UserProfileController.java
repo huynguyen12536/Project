@@ -2,6 +2,7 @@ package com.learnhub.user.controller;
 
 import com.learnhub.user.dto.request.UserProfileUpdateRequest;
 import com.learnhub.user.dto.response.AvatarUploadResponse;
+import com.learnhub.user.dto.response.ErrorResponse;
 import com.learnhub.user.dto.response.UserProfileResponse;
 import com.learnhub.user.service.UserService;
 import jakarta.validation.Valid;

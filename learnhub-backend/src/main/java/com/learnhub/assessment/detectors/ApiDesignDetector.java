@@ -203,6 +203,10 @@ public class ApiDesignDetector implements CompetencyDetector {
             this.hasErrorHandling = false;
         }
 
+        boolean hasErrorHandling() {
+            return this.hasErrorHandling;
+        }
+
         boolean returns200Or201() {
             return statusCodes.contains(200) || statusCodes.contains(201);
         }

@@ -6,7 +6,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 /**
@@ -35,8 +37,15 @@ public class AssessmentResponse {
             assessment.getUserId(),
             assessment.getSnapshotId(),
             assessment.getStatus().name(),
-            assessment.getCreatedAt(),
-            assessment.getCompletedAt()
+            convertToLocalDateTime(assessment.getCreatedAt()),
+            convertToLocalDateTime(assessment.getCompletedAt())
         );
+    }
+
+    private static LocalDateTime convertToLocalDateTime(Instant instant) {
+        if (instant == null) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(instant, ZoneId.of("UTC"));
     }
 }

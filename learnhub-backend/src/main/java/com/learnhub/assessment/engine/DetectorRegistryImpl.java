@@ -1,5 +1,6 @@
 package com.learnhub.assessment.engine;
 
+import com.learnhub.github.entity.RepositorySnapshot;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -163,6 +164,7 @@ public class DetectorRegistryImpl implements DetectorRegistry {
             CompetencyDetector.BrfRules brfRules) {
         log.debug("Running {} enabled detectors in parallel", getEnabledDetectors().size());
 
+        RepositorySnapshot repoSnapshot = (RepositorySnapshot) snapshot;
         List<CompetencyDetector> enabledDetectors = getEnabledDetectors();
         Map<String, CompetencyDetector.DetectionResult> results = new ConcurrentHashMap<>();
         List<Future<Void>> futures = new ArrayList<>();
@@ -174,7 +176,7 @@ public class DetectorRegistryImpl implements DetectorRegistry {
                 try {
                     log.debug("Detector executing: {}", competencyName);
                     CompetencyDetector.DetectionResult result =
-                        detector.analyze(snapshot, brfRules);
+                        detector.analyze(repoSnapshot, brfRules);
                     results.put(competencyName, result);
                     log.debug("Detector completed: {} (confidence={})",
                         competencyName, result.confidence);
@@ -211,14 +213,12 @@ public class DetectorRegistryImpl implements DetectorRegistry {
      */
     private CompetencyDetector.DetectionResult createFailedDetectionResult(
             String competencyName, Exception e) {
-        return new CompetencyDetector.DetectionResult(
-            competencyName,
-            CompetencyDetector.CompetencyLevel.NOT_DEMONSTRATED,
-            Collections.singletonList("Detector execution failed: " + e.getMessage()),
-            Collections.singletonList("Detector error prevented analysis"),
-            0,  // confidence = 0
-            Collections.emptyMap()
-        );
+        CompetencyDetector.DetectionResult result =
+            new CompetencyDetector.DetectionResult(competencyName, CompetencyDetector.CompetencyLevel.NOT_DEMONSTRATED);
+        result.gaps.add("Detector execution failed: " + e.getMessage());
+        result.evidence.add("Detector error prevented analysis");
+        result.confidence = 0;
+        return result;
     }
 
     @Override

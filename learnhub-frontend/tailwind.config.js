@@ -6,7 +6,23 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        jakarta: ['Plus Jakarta Sans', 'sans-serif'],
+      },
       colors: {
+        lh: {
+          dark: '#15162E',
+          navy: '#242582',
+          blue: '#2F2FA2',
+          purple: '#553D67',
+          mauve: '#99738E',
+          pink: '#F64C72',
+          'pink-dark': '#E23B61',
+          muted: '#6A6E84',
+          border: '#E7E9F2',
+          surface: '#F6F7FB',
+          input: '#E1E4ED',
+        },
         primary: {
           50: '#f0f9ff',
           100: '#e0f2fe',

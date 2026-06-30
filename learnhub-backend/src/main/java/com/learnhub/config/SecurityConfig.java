@@ -3,6 +3,7 @@ package com.learnhub.config;
 import com.learnhub.auth.filter.JwtAuthenticationFilter;
 import com.learnhub.auth.service.JwtService;
 import com.learnhub.user.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,6 +28,7 @@ public class SecurityConfig {
     public SecurityConfig(
         JwtService jwtService,
         UserRepository userRepository,
+        @Qualifier("corsConfigurationSource")
         CorsConfigurationSource corsConfigurationSource
     ) {
         this.jwtService = jwtService;
@@ -42,9 +44,24 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        // Public auth endpoints (register, login, verify-email, forgot/reset password, token refresh)
+                        .requestMatchers(
+                            "/api/v1/auth/register",
+                            "/api/v1/auth/login",
+                            "/api/v1/auth/verify-email",
+                            "/api/v1/auth/forgot-password",
+                            "/api/v1/auth/reset-password",
+                            "/api/v1/auth/refresh",
+                            "/api/v1/auth/logout"
+                        ).permitAll()
+                        // Public key endpoint — no auth required (used by clients to verify JWTs)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/public-key/**").permitAll()
+                        // Admin endpoints — secured by @PreAuthorize on controller methods
+                        .requestMatchers("/api/v1/auth/revoke-sessions", "/api/v1/auth/key-rotation").authenticated()
+                        // GitHub OAuth callbacks are public (no JWT yet at callback time)
                         .requestMatchers(HttpMethod.GET, "/api/v1/oauth/github/callback").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/github/callback").permitAll()
+                        // Legacy email/password endpoints (kept for backward compatibility)
                         .requestMatchers("/api/v1/email/verify").permitAll()
                         .requestMatchers("/api/v1/password/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health").permitAll()
@@ -63,6 +80,7 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // Cost factor 13 meets OWASP minimum recommended strength (2^13 iterations)
+        return new BCryptPasswordEncoder(13);
     }
 }

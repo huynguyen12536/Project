@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Slf4j
-public class AssessmentEngine {
+public class CompetencyScoringEngine {
 
     private final DetectorRegistry detectorRegistry;
 
@@ -34,7 +34,7 @@ public class AssessmentEngine {
      *
      * @param detectorRegistry manages all available detectors
      */
-    public AssessmentEngine(DetectorRegistry detectorRegistry) {
+    public CompetencyScoringEngine(DetectorRegistry detectorRegistry) {
         this.detectorRegistry = detectorRegistry;
     }
 

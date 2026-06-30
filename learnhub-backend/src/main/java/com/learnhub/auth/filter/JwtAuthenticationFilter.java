@@ -50,13 +50,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (userOptional.isPresent()) {
                         User user = userOptional.get();
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + (roles != null ? roles : "LEARNER"));
+                        // Use userId (UUID) as principal — never store PII (email) in SecurityContext
                         UsernamePasswordAuthenticationToken authToken =
-                                new UsernamePasswordAuthenticationToken(user.getEmail(), null, Collections.singletonList(authority));
+                                new UsernamePasswordAuthenticationToken(userId, null, Collections.singletonList(authority));
                         authToken.setDetails(user);
                         SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                        // DEBUG LOGGING - Verify authentication chain
-                        logger.info("JWT_FILTER: Token parsed successfully for user: {}", user.getEmail());
+                        // DEBUG LOGGING - Verify authentication chain (userId only, never PII)
+                        logger.info("JWT_FILTER: Token parsed successfully for userId: {}", userId);
                         logger.info("JWT_CLAIM_ROLES: {}", roles);
                         logger.info("AUTH_TYPE: {}", authToken.getClass().getSimpleName());
                         logger.info("AUTHORITIES: {}", authToken.getAuthorities());

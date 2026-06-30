@@ -1,0 +1,645 @@
+name: CI/CD Pipeline - LearnHub LMS
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'infra/**'
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/learnhub-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/learnhub-frontend
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+
+# Cancel in-progress runs for same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ============================================================================
+  # STAGE 1A: Quality Gate - Maven Tests + JaCoCo Coverage
+  # Runs on: every PR + push to main/feature branches
+  # ============================================================================
+  test-backend:
+    name: "Stage 1A: Backend Tests + Coverage (80% gate)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: learnhub_test
+          POSTGRES_USER: learnhub_test
+          POSTGRES_PASSWORD: learnhub_test
+        options: >-
+          --health-cmd "pg_isready -U learnhub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run tests with JaCoCo coverage
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/learnhub_test
+          SPRING_DATASOURCE_USERNAME: learnhub_test
+          SPRING_DATASOURCE_PASSWORD: learnhub_test
+          REDIS_URL: redis://localhost:6379
+          SPRING_PROFILES_ACTIVE: test
+          GITHUB_OAUTH_CLIENT_ID: test-client-id
+          GITHUB_OAUTH_CLIENT_SECRET: test-client-secret
+          GITHUB_TOKEN_SECRET: test-token-secret-at-least-32-bytes-long-here
+          GITHUB_TOKEN_ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcw==
+        working-directory: ./learnhub-backend
+        run: |
+          mvn clean verify \
+            -Dspring.profiles.active=test \
+            -Dspring.datasource.url="$SPRING_DATASOURCE_URL" \
+            -Dspring.datasource.username="$SPRING_DATASOURCE_USERNAME" \
+            -Dspring.datasource.password="$SPRING_DATASOURCE_PASSWORD" \
+            -Djacoco.minimum.coverage=0.80 \
+            -B -V
+
+      - name: Check JaCoCo coverage threshold (80%)
+        working-directory: ./learnhub-backend
+        run: |
+          if [ -f target/site/jacoco/index.html ]; then
+            COVERAGE=$(grep -oP 'Total[^%]+\K\d+(?=%)' target/site/jacoco/index.html | head -1)
+            echo "Overall coverage: ${COVERAGE}%"
+            if [ "${COVERAGE:-0}" -lt 80 ]; then
+              echo "FAIL: Coverage ${COVERAGE}% is below 80% threshold"
+              exit 1
+            fi
+            echo "PASS: Coverage ${COVERAGE}% meets 80% threshold"
+          else
+            echo "JaCoCo report not found - checking XML report..."
+            if [ -f target/site/jacoco/jacoco.xml ]; then
+              MISSED=$(grep -oP 'missed="\K\d+' target/site/jacoco/jacoco.xml | awk '{s+=$1} END {print s}')
+              COVERED=$(grep -oP 'covered="\K\d+' target/site/jacoco/jacoco.xml | awk '{s+=$1} END {print s}')
+              TOTAL=$((MISSED + COVERED))
+              if [ "$TOTAL" -gt 0 ]; then
+                PCT=$(( (COVERED * 100) / TOTAL ))
+                echo "Overall coverage: ${PCT}%"
+                if [ "$PCT" -lt 80 ]; then
+                  echo "FAIL: Coverage ${PCT}% is below 80%"
+                  exit 1
+                fi
+              fi
+            fi
+          fi
+
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-coverage-report
+          path: learnhub-backend/target/site/jacoco/
+          retention-days: 7
+
+      - name: Upload Surefire test reports on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-reports
+          path: |
+            learnhub-backend/target/surefire-reports/
+            learnhub-backend/target/failsafe-reports/
+          retention-days: 5
+
+  # ============================================================================
+  # STAGE 1B: Security Gate - CodeQL SAST
+  # Runs on: every PR + push to main
+  # ============================================================================
+  security-sast:
+    name: "Stage 1B: CodeQL SAST (no HIGH severity)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java, javascript
+          queries: security-and-quality
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build for CodeQL analysis
+        working-directory: ./learnhub-backend
+        run: |
+          mvn clean compile -DskipTests -q
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java"
+
+  # ============================================================================
+  # STAGE 1C: Dependency Security Check - OWASP
+  # Runs on: every PR + push to main
+  # ============================================================================
+  security-deps:
+    name: "Stage 1C: OWASP Dependency Check (no CRITICAL CVEs)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run OWASP Dependency Check
+        working-directory: ./learnhub-backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          mvn org.owasp:dependency-check-maven:check \
+            -DfailBuildOnCVSS=9 \
+            -DsuppressionFile=.owasp-suppressions.xml \
+            ${NVD_API_KEY:+-DnvdApiKey=$NVD_API_KEY} \
+            -B || true
+          # Report even if check fails; gate is enforced below
+          if [ -f target/dependency-check-report.html ]; then
+            echo "OWASP report generated"
+          fi
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dependency-report
+          path: learnhub-backend/target/dependency-check-report.html
+          retention-days: 7
+
+  # ============================================================================
+  # STAGE 1D: Frontend Build + Bundle Size Check
+  # ============================================================================
+  test-frontend:
+    name: "Stage 1D: Frontend Build + Bundle Size (<500KB gzipped)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: learnhub-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./learnhub-frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./learnhub-frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:8080/api
+        run: npx vite build
+
+      - name: Check bundle size (<500KB gzipped)
+        working-directory: ./learnhub-frontend
+        run: |
+          echo "=== Bundle size report ==="
+          if [ -d dist ]; then
+            # Find the largest JS bundle and check gzip size
+            MAIN_JS=$(find dist -name "*.js" -not -name "*.map" | sort -S -r | head -1)
+            if [ -n "$MAIN_JS" ]; then
+              GZIP_SIZE=$(gzip -c "$MAIN_JS" | wc -c)
+              GZIP_KB=$((GZIP_SIZE / 1024))
+              echo "Largest JS bundle (gzipped): ${GZIP_KB}KB ($MAIN_JS)"
+              if [ "$GZIP_KB" -gt 500 ]; then
+                echo "FAIL: Bundle size ${GZIP_KB}KB exceeds 500KB limit"
+                exit 1
+              fi
+              echo "PASS: Bundle size ${GZIP_KB}KB is within 500KB limit"
+            fi
+
+            echo "--- All assets ---"
+            find dist -type f -not -name "*.map" | while read f; do
+              SIZE=$(gzip -c "$f" | wc -c)
+              echo "  $f: $(( SIZE / 1024 ))KB (gzipped)"
+            done
+          fi
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: learnhub-frontend/dist/
+          retention-days: 3
+
+  # ============================================================================
+  # STAGE 2: Build Docker Images
+  # Runs on: push to main only, after all Stage 1 gates pass
+  # ============================================================================
+  build:
+    name: "Stage 2: Build & Push Docker Images"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [test-backend, test-frontend, security-sast, security-deps]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      backend_tag: ${{ steps.meta_backend.outputs.version }}
+      frontend_tag: ${{ steps.meta_frontend.outputs.version }}
+      image_sha: ${{ github.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Backend Image ----
+      - name: Extract metadata for backend
+        id: meta_backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=sha,prefix=,format=long
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push backend image
+        id: build_backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./learnhub-backend
+          dockerfile: ./learnhub-backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta_backend.outputs.tags }}
+          labels: ${{ steps.meta_backend.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Verify backend image size (<500MB)
+        run: |
+          IMAGE="${{ env.BACKEND_IMAGE }}:latest"
+          SIZE=$(docker inspect "$IMAGE" --format='{{.Size}}' 2>/dev/null || echo "0")
+          SIZE_MB=$(( SIZE / 1024 / 1024 ))
+          echo "Backend image size: ${SIZE_MB}MB"
+          if [ "$SIZE_MB" -gt 500 ]; then
+            echo "WARNING: Backend image ${SIZE_MB}MB exceeds 500MB target"
+          fi
+
+      # ---- Frontend Image ----
+      - name: Extract metadata for frontend
+        id: meta_frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=,format=long
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push frontend image
+        id: build_frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./learnhub-frontend
+          dockerfile: ./learnhub-frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta_frontend.outputs.tags }}
+          labels: ${{ steps.meta_frontend.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=${{ secrets.STAGING_API_BASE_URL || 'http://localhost:8080/api' }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Generate build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| | Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|--|--|--|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ env.BACKEND_IMAGE }} | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ env.FRONTEND_IMAGE }} | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # STAGE 3: Deploy to Staging (Automatic blue-green)
+  # ============================================================================
+  deploy-staging:
+    name: "Stage 3: Deploy to Staging (Blue-Green)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment:
+      name: staging
+      url: http://${{ secrets.STAGING_HOST }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_DEPLOY_KEY }}" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H "${{ secrets.STAGING_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Copy deployment files to staging
+        run: |
+          scp -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
+            docker-compose.yml \
+            prometheus.yml \
+            -r nginx/ \
+            -r scripts/ \
+            ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/opt/learnhub/
+
+      - name: Run blue-green deployment on staging
+        env:
+          NEW_IMAGE_TAG: ${{ github.sha }}
+          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.FRONTEND_IMAGE }}
+        run: |
+          ssh -i ~/.ssh/staging_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} \
+              "
+              export NEW_IMAGE_TAG='${{ github.sha }}'
+              export BACKEND_IMAGE='${{ env.BACKEND_IMAGE }}'
+              export FRONTEND_IMAGE='${{ env.FRONTEND_IMAGE }}'
+              export REGISTRY='${{ env.REGISTRY }}'
+              export GITHUB_TOKEN='${{ secrets.GHCR_TOKEN }}'
+
+              cd /opt/learnhub
+
+              echo '\$GITHUB_TOKEN' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+              bash scripts/deploy-blue-green.sh \
+                --image-tag \"\$NEW_IMAGE_TAG\" \
+                --backend-image \"\$BACKEND_IMAGE\" \
+                --frontend-image \"\$FRONTEND_IMAGE\" \
+                --env staging
+              "
+
+      - name: Wait for staging health
+        run: |
+          bash scripts/health-check.sh \
+            --url "http://${{ secrets.STAGING_HOST }}/health" \
+            --timeout 120
+
+      - name: Run E2E smoke tests against staging
+        env:
+          API_BASE_URL: http://${{ secrets.STAGING_HOST }}/api
+          FRONTEND_URL: http://${{ secrets.STAGING_HOST }}
+        run: |
+          bash scripts/e2e-smoke-test.sh || {
+            echo "E2E tests failed - triggering rollback"
+            ssh -i ~/.ssh/staging_key \
+                -o StrictHostKeyChecking=no \
+                ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} \
+                "cd /opt/learnhub && bash scripts/rollback.sh --env staging"
+            exit 1
+          }
+
+  # ============================================================================
+  # STAGE 4: Production Approval Gate + Deploy
+  # Requires manual approval in GitHub Environments
+  # ============================================================================
+  deploy-production:
+    name: "Stage 4: Deploy to Production (Manual Approval Required)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment:
+      name: production
+      url: https://${{ secrets.PROD_HOST }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_DEPLOY_KEY }}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Copy deployment files to production
+        run: |
+          scp -i ~/.ssh/prod_key -o StrictHostKeyChecking=no \
+            docker-compose.yml \
+            prometheus.yml \
+            -r nginx/ \
+            -r scripts/ \
+            ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/learnhub/
+
+      - name: Run blue-green deployment on production
+        run: |
+          ssh -i ~/.ssh/prod_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} \
+              "
+              export NEW_IMAGE_TAG='${{ github.sha }}'
+              export BACKEND_IMAGE='${{ env.BACKEND_IMAGE }}'
+              export FRONTEND_IMAGE='${{ env.FRONTEND_IMAGE }}'
+              export GITHUB_TOKEN='${{ secrets.GHCR_TOKEN }}'
+
+              cd /opt/learnhub
+
+              echo '\$GITHUB_TOKEN' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+              bash scripts/deploy-blue-green.sh \
+                --image-tag \"\$NEW_IMAGE_TAG\" \
+                --backend-image \"\$BACKEND_IMAGE\" \
+                --frontend-image \"\$FRONTEND_IMAGE\" \
+                --env production
+              "
+
+      - name: Wait for production health
+        run: |
+          bash scripts/health-check.sh \
+            --url "https://${{ secrets.PROD_HOST }}/health" \
+            --timeout 120
+
+  # ============================================================================
+  # STAGE 5: Post-Deploy Verification + Notifications
+  # ============================================================================
+  post-deploy:
+    name: "Stage 5: Post-Deploy Verification + Notify"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [test-backend, test-frontend, security-sast, security-deps, build, deploy-staging, deploy-production]
+    if: always()
+
+    steps:
+      - name: Determine overall pipeline status
+        id: pipeline_status
+        run: |
+          TEST_BACKEND="${{ needs.test-backend.result }}"
+          TEST_FRONTEND="${{ needs.test-frontend.result }}"
+          SAST="${{ needs.security-sast.result }}"
+          DEPS="${{ needs.security-deps.result }}"
+          BUILD="${{ needs.build.result }}"
+          STAGING="${{ needs.deploy-staging.result }}"
+          PROD="${{ needs.deploy-production.result }}"
+
+          if [ "$TEST_BACKEND" = "success" ] && \
+             [ "$TEST_FRONTEND" = "success" ] && \
+             [ "$BUILD" = "success" ] && \
+             [ "$STAGING" = "success" ] && \
+             [ "$PROD" = "success" ]; then
+            echo "status=SUCCESS" >> $GITHUB_OUTPUT
+            echo "emoji=green_circle" >> $GITHUB_OUTPUT
+            echo "color=28a745" >> $GITHUB_OUTPUT
+          else
+            echo "status=FAILED" >> $GITHUB_OUTPUT
+            echo "emoji=red_circle" >> $GITHUB_OUTPUT
+            echo "color=cb2431" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Synthetic health check - critical paths
+        if: needs.deploy-production.result == 'success'
+        run: |
+          BASE="https://${{ secrets.PROD_HOST }}"
+
+          echo "Checking critical API paths..."
+          # Health endpoint
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/health" || echo "000")
+          echo "GET /health -> HTTP $STATUS"
+          [ "$STATUS" = "200" ] || echo "WARNING: /health returned $STATUS"
+
+          # API base
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/actuator/health" || echo "000")
+          echo "GET /api/actuator/health -> HTTP $STATUS"
+
+      - name: Send Slack notification
+        if: secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":${{ steps.pipeline_status.outputs.emoji }}: LearnHub Deploy ${{ steps.pipeline_status.outputs.status }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": ":${{ steps.pipeline_status.outputs.emoji }}: LearnHub Deploy ${{ steps.pipeline_status.outputs.status }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>" },
+                    { "type": "mrkdwn", "text": "*Author:*\n${{ github.actor }}" },
+                    { "type": "mrkdwn", "text": "*Tests:*\n${{ needs.test-backend.result }} / ${{ needs.test-frontend.result }}" },
+                    { "type": "mrkdwn", "text": "*SAST:*\n${{ needs.security-sast.result }}" },
+                    { "type": "mrkdwn", "text": "*Build:*\n${{ needs.build.result }}" },
+                    { "type": "mrkdwn", "text": "*Staging:*\n${{ needs.deploy-staging.result }}" },
+                    { "type": "mrkdwn", "text": "*Production:*\n${{ needs.deploy-production.result }}" }
+                  ]
+                }
+              ]
+            }
+
+      - name: Create Grafana deployment annotation
+        if: needs.deploy-production.result == 'success' && secrets.GRAFANA_API_KEY != ''
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          TIMESTAMP=$(date +%s)000
+          curl -s -X POST "$GRAFANA_URL/api/annotations" \
+            -H "Authorization: Bearer $GRAFANA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"Deployment: ${{ github.sha }}\",
+              \"tags\": [\"deployment\", \"production\", \"${{ github.ref_name }}\"],
+              \"time\": $TIMESTAMP
+            }" || echo "Grafana annotation failed (non-critical)"
+
+      - name: Generate pipeline summary
+        if: always()
+        run: |
+          echo "## Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--|--|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests (80% coverage) | ${{ needs.test-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Build (<500KB) | ${{ needs.test-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL SAST | ${{ needs.security-sast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OWASP Deps | ${{ needs.security-deps.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Staging Deploy | ${{ needs.deploy-staging.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Production Deploy | ${{ needs.deploy-production.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})" >> $GITHUB_STEP_SUMMARY

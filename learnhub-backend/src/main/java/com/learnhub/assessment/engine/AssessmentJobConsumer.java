@@ -30,7 +30,7 @@ import java.util.Optional;
  * 1. AssessmentController enqueues job to Redis (assessment_queue)
  * 2. JobConsumer dequeues and calls processJob()
  * 3. ProcessJob loads repo snapshot and BRF version
- * 4. AssessmentEngine evaluates against BRF rules
+ * 4. CompetencyScoringEngine evaluates against BRF rules
  * 5. Results persisted and Assessment marked COMPLETED
  * 6. Learner can view results via REST API
  *
@@ -47,7 +47,7 @@ public class AssessmentJobConsumer {
     private final AssessmentRepository assessmentRepository;
     private final AssessmentService assessmentService;
     private final RepositorySnapshotService snapshotService;
-    private final AssessmentEngine engine;
+    private final CompetencyScoringEngine engine;
     private final BrfService brfService;
     private final ObjectMapper objectMapper;
 
@@ -73,7 +73,7 @@ public class AssessmentJobConsumer {
             AssessmentRepository assessmentRepository,
             AssessmentService assessmentService,
             RepositorySnapshotService snapshotService,
-            AssessmentEngine engine,
+            CompetencyScoringEngine engine,
             BrfService brfService,
             ObjectMapper objectMapper) {
         this.jobQueue = jobQueue;
@@ -187,7 +187,7 @@ public class AssessmentJobConsumer {
      * 1. Fetch Assessment record, update status to PROCESSING
      * 2. Load repository snapshot (git archive)
      * 3. Load BRF rules by version
-     * 4. Invoke AssessmentEngine to evaluate
+     * 4. Invoke CompetencyScoringEngine to evaluate
      * 5. Persist results and mark COMPLETED
      *
      * @param job the assessment job to process
@@ -211,7 +211,7 @@ public class AssessmentJobConsumer {
 
         try {
             // Load repository snapshot
-            RepositorySnapshot snapshot = snapshotService.getSnapshot(job.getRepoId());
+            RepositorySnapshot snapshot = snapshotService.getSnapshot(job.getRepoId(), assessment.getUserId());
             if (snapshot == null) {
                 throw new IllegalStateException(
                         "Repository snapshot not found: " + job.getRepoId());
@@ -235,7 +235,6 @@ public class AssessmentJobConsumer {
             // Persist assessment with status update
             assessment.setStatus(AssessmentStatus.COMPLETED);
             assessment.setCompletedAt(Instant.now());
-            assessment.setResultJson(objectMapper.writeValueAsString(evalResult));
             assessmentRepository.save(assessment);
 
             // Persist detailed results

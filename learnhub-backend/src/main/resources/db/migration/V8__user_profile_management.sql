@@ -9,13 +9,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50) UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
 
 -- Update first_name and last_name columns to have length constraints
+-- PostgreSQL syntax: ALTER COLUMN ... TYPE (not MySQL's MODIFY COLUMN)
 ALTER TABLE users
-  MODIFY COLUMN first_name VARCHAR(50),
-  MODIFY COLUMN last_name VARCHAR(50);
+  ALTER COLUMN first_name TYPE VARCHAR(50),
+  ALTER COLUMN last_name TYPE VARCHAR(50);
 
 -- Update bio column to have length constraint
 ALTER TABLE users
-  MODIFY COLUMN bio VARCHAR(500);
+  ALTER COLUMN bio TYPE VARCHAR(500);
 
 -- Create index on username for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

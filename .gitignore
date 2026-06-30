@@ -15,6 +15,16 @@ docs
 .env
 .env.local
 .env.*.local
+.env.production
+*.pem
+learnhub-backend/config/keys/
+
+# Staging env is safe to commit (no secrets) — .env.staging is tracked
+
+# Deployment state (runtime, not source)
+scripts/.deploy-state
+.deploy-state
+.rollback-state
 
 # IDE
 .idea/

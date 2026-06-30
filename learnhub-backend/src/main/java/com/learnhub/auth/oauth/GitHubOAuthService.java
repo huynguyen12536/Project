@@ -173,6 +173,7 @@ public class GitHubOAuthService {
         log.info("Successfully linked GitHub user {} to LearnHub user {}", profile.githubUsername(), userId);
 
         return new UserOAuthResponse(
+            userId,
             userOAuth.getGithubUsername(),
             profile.avatarUrl(),
             userOAuth.getConnectedAt()

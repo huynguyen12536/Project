@@ -20,7 +20,7 @@ public class FileSnapshot {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false)
+    @Column(name = "snapshot_id", nullable = false)
     private UUID snapshotId;
 
     @Column(nullable = false)

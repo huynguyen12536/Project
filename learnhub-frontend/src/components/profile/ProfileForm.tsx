@@ -47,8 +47,6 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
     lastName: profile.lastName || '',
     email: profile.email || '',
     bio: profile.bio || '',
-    phone: profile.phone || '',
-    location: profile.location || '',
   });
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof UserProfileUpdatePayload, string>>>({});

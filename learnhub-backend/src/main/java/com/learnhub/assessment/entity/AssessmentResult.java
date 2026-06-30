@@ -3,8 +3,9 @@ package com.learnhub.assessment.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -25,8 +26,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode
-@ToString
 public class AssessmentResult {
 
     @Id
@@ -63,4 +62,24 @@ public class AssessmentResult {
             createdAt = Instant.now();
         }
     }
+
+    // Explicit getters (workaround for Lombok annotation processing)
+    public UUID getId() { return this.id; }
+    public UUID getAssessmentId() { return this.assessmentId; }
+    public String getOverallLevel() { return this.overallLevel; }
+    public List<String> getAllGaps() { return this.allGaps; }
+    public List<String> getNextSteps() { return this.nextSteps; }
+    public Double getOverallConfidence() { return this.overallConfidence; }
+    public String getResultsJson() { return this.resultsJson; }
+    public Instant getCreatedAt() { return this.createdAt; }
+
+    // Explicit setters
+    public void setId(UUID id) { this.id = id; }
+    public void setAssessmentId(UUID assessmentId) { this.assessmentId = assessmentId; }
+    public void setOverallLevel(String overallLevel) { this.overallLevel = overallLevel; }
+    public void setAllGaps(List<String> allGaps) { this.allGaps = allGaps; }
+    public void setNextSteps(List<String> nextSteps) { this.nextSteps = nextSteps; }
+    public void setOverallConfidence(Double overallConfidence) { this.overallConfidence = overallConfidence; }
+    public void setResultsJson(String resultsJson) { this.resultsJson = resultsJson; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }
