@@ -6,6 +6,7 @@ import { MainLayout } from './components/layouts/MainLayout';
 import { PageTransition } from './components/layouts/PageTransition';
 import { RouteSkeleton } from './components/layouts/RouteSkeleton';
 import { queryClient } from './lib/queryClient';
+import { getRoleHomePath } from './lib/roleRouting';
 import { useAuthStore } from './stores/authStore';
 import RequireRole from './components/auth/RequireRole';
 
@@ -18,6 +19,9 @@ const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
 const InstructorDashboardPage = lazy(() => import('./pages/instructor/InstructorDashboardPage'));
 const InstructorCoursesPage = lazy(() => import('./pages/instructor/InstructorCoursesPage'));
 const InstructorLessonsPage = lazy(() => import('./pages/instructor/InstructorLessonsPage'));
+const InstructorStudentsPage = lazy(() => import('./pages/instructor/InstructorStudentsPage'));
+const InstructorRevenuePage = lazy(() => import('./pages/instructor/InstructorRevenuePage'));
+const InstructorSettingsPage = lazy(() => import('./pages/instructor/InstructorSettingsPage'));
 const LoginPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.RegisterPage })));
 const VerifyEmailPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.VerifyEmailPage })));
@@ -35,6 +39,17 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   return <>{children}</>;
+};
+
+const RoleAwareDashboard: React.FC = () => {
+  const role = useAuthStore((state) => state.role);
+  const homePath = getRoleHomePath(role);
+
+  if (homePath !== '/dashboard') {
+    return <Navigate to={homePath} replace />;
+  }
+
+  return <DashboardPage />;
 };
 
 const AppRoutes = () => {
@@ -56,12 +71,15 @@ const AppRoutes = () => {
       >
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+          <Route path="/dashboard" element={<RequireAuth><RoleAwareDashboard /></RequireAuth>} />
           <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
           <Route path="/learn/courses/:id" element={<RequireAuth><CoursePlayerPage /></RequireAuth>} />
-          <Route path="/instructor/dashboard" element={<RequireRole roles={['instructor']}><InstructorDashboardPage /></RequireRole>} />
-          <Route path="/instructor/courses" element={<RequireRole roles={['instructor']}><InstructorCoursesPage /></RequireRole>} />
-          <Route path="/instructor/lessons" element={<RequireRole roles={['instructor']}><InstructorLessonsPage /></RequireRole>} />
+          <Route path="/instructor/dashboard" element={<RequireRole roles={['instructor', 'admin']}><InstructorDashboardPage /></RequireRole>} />
+          <Route path="/instructor/courses" element={<RequireRole roles={['instructor', 'admin']}><InstructorCoursesPage /></RequireRole>} />
+          <Route path="/instructor/lessons" element={<RequireRole roles={['instructor', 'admin']}><InstructorLessonsPage /></RequireRole>} />
+          <Route path="/instructor/students" element={<RequireRole roles={['instructor', 'admin']}><InstructorStudentsPage /></RequireRole>} />
+          <Route path="/instructor/revenue" element={<RequireRole roles={['instructor', 'admin']}><InstructorRevenuePage /></RequireRole>} />
+          <Route path="/instructor/settings" element={<RequireRole roles={['instructor', 'admin']}><InstructorSettingsPage /></RequireRole>} />
           <Route path="/instructor" element={<Navigate to="/instructor/dashboard" replace />} />
           <Route path="/courses" element={<CourseCatalogPage />} />
           <Route path="/courses/:id" element={<CourseDetailPage />} />

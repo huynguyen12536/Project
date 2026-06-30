@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -49,11 +48,12 @@ public class MinIOFileStorageService implements FileStorageService {
         // Validate file
         validateFile(file);
 
-        // Generate unique filename
+        // Use a stable object key so repeated uploads replace the existing avatar for the user.
         String originalFilename = file.getOriginalFilename();
         String extension = getFileExtension(originalFilename);
-        String hash = generateHash(file.getBytes());
-        String filename = String.format("avatars/%s-%s.%s", userId, hash.substring(0, 8), extension);
+        String filename = extension.isBlank()
+            ? String.format("avatars/%s/avatar", userId)
+            : String.format("avatars/%s/avatar.%s", userId, extension.toLowerCase());
 
         // In production, integrate with actual MinIO client:
         // MinioClient minioClient = new MinioClient.Builder()
@@ -84,8 +84,11 @@ public class MinIOFileStorageService implements FileStorageService {
 
     @Override
     public boolean fileExists(String fileUrl) {
-        // In production, check with MinIO if object exists
-        return true;
+        if (fileUrl == null || fileUrl.isBlank()) {
+            return false;
+        }
+        String prefix = String.format("%s/%s/", minioEndpoint, bucketName);
+        return fileUrl.startsWith(prefix);
     }
 
     @Override
@@ -130,21 +133,4 @@ public class MinIOFileStorageService implements FileStorageService {
         return filename.substring(filename.lastIndexOf(".") + 1);
     }
 
-    /**
-     * Generate SHA256 hash of file content.
-     */
-    private String generateHash(byte[] fileContent) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(fileContent);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hashBytes) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            log.error("Error generating file hash", e);
-            return UUID.randomUUID().toString();
-        }
-    }
 }

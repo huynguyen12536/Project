@@ -29,9 +29,9 @@ interface ApiErrorBody {
 
 function normalizeRole(role?: string): UserRole {
   const value = role?.toLowerCase();
-  if (value === 'admin' || value === 'instructor' || value === 'student') {
-    return value;
-  }
+  if (value === 'admin') return 'admin';
+  if (value === 'instructor') return 'instructor';
+  if (value === 'student' || value === 'learner') return 'student';
   return 'student';
 }
 

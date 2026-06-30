@@ -4,7 +4,7 @@ import { cn } from '../lib/cn';
 export interface AvatarProps {
   src?: string | null;
   name?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   /** When provided, an upload overlay appears on hover and triggers this on file select. */
   onUpload?: (file: File) => void;
   className?: string;
@@ -15,6 +15,7 @@ const sizeClasses = {
   md: 'h-10 w-10 text-sm',
   lg: 'h-16 w-16 text-lg',
   xl: 'h-24 w-24 text-2xl',
+  xxl: 'h-32 w-32 text-4xl',
 };
 
 function initials(name?: string): string {

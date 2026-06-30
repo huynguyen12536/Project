@@ -8,9 +8,6 @@ import {
   LogOut,
   LucideIcon,
   Menu,
-  BookOpen,
-  LayoutGrid,
-  Map,
   Search,
   ShoppingCart,
   UserCircle2,
@@ -39,14 +36,6 @@ const guestNavItems: NavItem[] = [
   { label: 'Lo trinh', path: '/courses#roadmap' },
   { label: 'Hoc phi', path: '/courses#pricing' },
   { label: 'Giang day', path: '/courses#teach' },
-];
-
-const authedNavItems: NavItem[] = [
-  { label: 'Kham pha khoa hoc', path: '/courses', icon: Compass },
-  { label: 'Bang dieu khien', path: '/dashboard', exact: true, icon: LayoutGrid },
-  { label: 'Khoa hoc cua toi', path: '/dashboard#my-courses', icon: BookOpen },
-  { label: 'Lo trinh', path: '/dashboard#roadmap', icon: Map },
-  { label: 'Cong dong', path: '/dashboard#community', icon: UsersRound },
 ];
 
 const searchSuggestions = [
@@ -287,8 +276,13 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   const [langOpen, setLangOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
+  const role = useAuthStore((state) => state.role);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const logout = useAuthStore((state) => state.logout);
+
+  // Normalize role to lowercase and check if instructor or admin (case-insensitive)
+  const normalizedRole = role?.toLowerCase();
+  const isInstructorOrAdmin = normalizedRole === 'instructor' || normalizedRole === 'admin';
 
   const strings = copy[lang];
   const displayName = useMemo(() => {
@@ -296,6 +290,16 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
     return fullName || user?.email || strings.account;
   }, [strings.account, user?.email, user?.firstName, user?.lastName]);
   const profilePath = user?.id ? `/profile/${user.id}` : '/profile';
+  const authedNavItems = useMemo<NavItem[]>(
+    () => [
+      { label: 'Kham pha khoa hoc', path: '/courses', icon: Compass },
+      { label: 'Pho bien', path: '/courses?tab=popular', icon: Bell },
+      { label: 'Moi cap nhat', path: '/courses?sort=newest', icon: UserCircle2 },
+      { label: 'Uu dai hoc phi', path: '/courses?pricing=discount', icon: ShoppingCart },
+      { label: 'Cong dong', path: '/dashboard#community', icon: UsersRound },
+    ],
+    []
+  );
 
   const handleLogout = async () => {
     setAccountOpen(false);
@@ -309,7 +313,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   };
 
   const renderLogo = () => (
-    <button onClick={() => navigate(isAuthenticated ? '/dashboard' : '/')} className="flex items-center gap-3">
+    <button onClick={() => navigate('/')} className="flex items-center gap-3">
       <div className="flex h-[36px] w-[36px] items-center justify-center rounded-xl bg-lh-navy shadow-[0_10px_20px_rgba(36,37,130,0.18)]">
         <div className="ml-1 h-0 w-0 border-b-[7px] border-l-[11px] border-t-[7px] border-b-transparent border-l-lh-pink border-t-transparent" />
       </div>
@@ -333,19 +337,21 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
 
       {accountOpen ? (
         <div className="absolute right-0 top-[52px] z-60 w-[260px] rounded-[22px] border border-lh-border bg-white p-2 shadow-[0_20px_35px_rgba(21,22,46,0.12)]">
-          <button
-            onClick={() => {
-              setAccountOpen(false);
-              navigate('/instructor/courses');
-            }}
-            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[#F4F5FB]"
-          >
-            <GraduationCap className="h-5 w-5 text-lh-blue" />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-bold text-lh-navy">Studio giang day</div>
-              <div className="truncate text-xs text-lh-muted">Quan ly khoa hoc va bai giang</div>
-            </div>
-          </button>
+          {isInstructorOrAdmin && (
+            <button
+              onClick={() => {
+                setAccountOpen(false);
+                navigate('/instructor/dashboard');
+              }}
+              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[#F4F5FB]"
+            >
+              <GraduationCap className="h-5 w-5 text-lh-blue" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-lh-navy">Studio giảng day</div>
+                <div className="truncate text-xs text-lh-muted">Quan ly khoa hoc va bai giang</div>
+              </div>
+            </button>
+          )}
           <button
             onClick={() => {
               setAccountOpen(false);

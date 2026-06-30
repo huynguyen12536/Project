@@ -1,6 +1,7 @@
 package com.learnhub.user.service;
 
 import com.learnhub.file.FileStorageService;
+import com.learnhub.user.dto.request.UserProfilePatchRequest;
 import com.learnhub.user.dto.request.UserProfileUpdateRequest;
 import com.learnhub.user.dto.response.AvatarUploadResponse;
 import com.learnhub.user.dto.response.UserProfileResponse;
@@ -103,6 +104,58 @@ public class UserService {
         return UserProfileResponse.fromUser(updatedUser);
     }
 
+    public UserProfileResponse patchUserProfile(UUID userId, UserProfilePatchRequest patchRequest) {
+        log.debug("Patching user profile: {}", userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        if (patchRequest.getEmail() != null) {
+            String nextEmail = patchRequest.getEmail().trim();
+            if (nextEmail.isEmpty()) {
+                throw new IllegalArgumentException("Email is required");
+            }
+            if (!user.getEmail().equals(nextEmail) && userRepository.existsByEmail(nextEmail)) {
+                log.warn("Email already in use: {}", nextEmail);
+                throw new IllegalArgumentException("Email already in use: " + nextEmail);
+            }
+            user.setEmail(nextEmail);
+        }
+
+        if (patchRequest.getFirstName() != null) {
+            String nextFirstName = patchRequest.getFirstName().trim();
+            if (nextFirstName.isEmpty()) {
+                throw new IllegalArgumentException("First name is required");
+            }
+            user.setFirstName(nextFirstName);
+        }
+
+        if (patchRequest.getLastName() != null) {
+            String nextLastName = patchRequest.getLastName().trim();
+            if (nextLastName.isEmpty()) {
+                throw new IllegalArgumentException("Last name is required");
+            }
+            user.setLastName(nextLastName);
+        }
+
+        if (patchRequest.getBio() != null) {
+            user.setBio(patchRequest.getBio().trim());
+        }
+
+        if (patchRequest.getPhone() != null) {
+            user.setPhone(patchRequest.getPhone().trim());
+        }
+
+        if (patchRequest.getLocation() != null) {
+            user.setLocation(patchRequest.getLocation().trim());
+        }
+
+        User updatedUser = userRepository.save(user);
+        log.info("User profile patched: {}", userId);
+
+        return UserProfileResponse.fromUser(updatedUser);
+    }
+
     /**
      * Upload and update user avatar.
      *
@@ -118,25 +171,28 @@ public class UserService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        // Delete old avatar if exists
-        if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+        String previousAvatarUrl = user.getAvatarUrl();
+        String newAvatarUrl = fileStorageService.uploadFile(file, userId);
+        user.setAvatarUrl(newAvatarUrl);
+
+        User updatedUser = userRepository.save(user);
+        if (previousAvatarUrl != null
+            && !previousAvatarUrl.isBlank()
+            && !previousAvatarUrl.equals(newAvatarUrl)
+            && fileStorageService.fileExists(previousAvatarUrl)) {
             try {
-                fileStorageService.deleteFile(user.getAvatarUrl());
-                log.debug("Deleted previous avatar for user: {}", userId);
+                fileStorageService.deleteFile(previousAvatarUrl);
             } catch (IOException e) {
                 log.warn("Failed to delete previous avatar for user {}: {}", userId, e.getMessage());
             }
         }
 
-        // Upload new avatar
-        String newAvatarUrl = fileStorageService.uploadFile(file, userId);
-        user.setAvatarUrl(newAvatarUrl);
-
-        User updatedUser = userRepository.save(user);
         log.info("Avatar uploaded successfully for user: {}", userId);
 
         return AvatarUploadResponse.builder()
-            .message("Avatar uploaded successfully")
+            .message(previousAvatarUrl == null || previousAvatarUrl.isBlank()
+                ? "Avatar uploaded successfully"
+                : "Avatar updated successfully")
             .avatarUrl(newAvatarUrl)
             .fileSize(file.getSize())
             .uploadedAt(Instant.now())

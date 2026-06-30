@@ -59,7 +59,7 @@ export const useUserProfile = (
     setLoadingState({ isLoading: true, error: null, success: null });
     try {
       await fetchUserProfile(userId);
-      setLoadingState({ isLoading: false, error: null, success: 'Profile loaded' });
+      setLoadingState({ isLoading: false, error: null, success: null });
     } catch (err: any) {
       setLoadingState({
         isLoading: false,
@@ -76,15 +76,7 @@ export const useUserProfile = (
     async (userId: string, updates: Partial<UserProfileUpdatePayload>) => {
       setLoadingState({ isLoading: true, error: null, success: null });
       try {
-        // Merge with current user data to ensure required fields
-        const fullUpdates: UserProfileUpdatePayload = {
-          firstName: updates.firstName || user?.firstName || '',
-          lastName: updates.lastName || user?.lastName || '',
-          email: updates.email || user?.email || '',
-          bio: updates.bio || user?.bio || '',
-        };
-
-        await updateUserProfile(userId, fullUpdates);
+        await updateUserProfile(userId, updates);
         setLoadingState({
           isLoading: false,
           error: null,
@@ -99,7 +91,7 @@ export const useUserProfile = (
         throw err;
       }
     },
-    [user, updateUserProfile]
+    [updateUserProfile]
   );
 
   /**

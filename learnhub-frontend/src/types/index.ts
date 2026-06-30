@@ -15,6 +15,9 @@ export interface UserProfile {
   lastName: string;
   bio: string;
   avatarUrl: string | null;
+  role: string;
+  phone?: string;
+  location?: string;
   createdAt: string; // ISO 8601 timestamp
   updatedAt: string; // ISO 8601 timestamp
 }

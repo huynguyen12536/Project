@@ -138,7 +138,7 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(password));
         user.setFirstName(firstName);
         user.setLastName(lastName);
-        user.setRole("STUDENT");
+        user.setRole("LEARNER");
         user.setEmailVerified(false);
 
         User saved = userRepository.save(user);

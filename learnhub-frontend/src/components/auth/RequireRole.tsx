@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import type { UserRole } from '../../types/auth';
+import { getRoleHomePath } from '../../lib/roleRouting';
 
 interface RequireRoleProps {
   /** Roles được phép truy cập route này */
@@ -22,7 +23,7 @@ interface RequireRoleProps {
 const RequireRole: React.FC<RequireRoleProps> = ({
   roles,
   children,
-  redirectTo = '/dashboard',
+  redirectTo,
 }) => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const role = useAuthStore((s) => s.role);
@@ -34,7 +35,7 @@ const RequireRole: React.FC<RequireRoleProps> = ({
   }
 
   if (!role || !roles.includes(role)) {
-    return <Navigate to={redirectTo} replace />;
+    return <Navigate to={redirectTo ?? getRoleHomePath(role)} replace />;
   }
 
   return <>{children}</>;

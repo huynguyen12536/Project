@@ -1,293 +1,281 @@
-/**
- * Profile Form Component
- *
- * Editable form for user profile information.
- * Features:
- * - Text fields (firstName, lastName, email, bio)
- * - Form validation
- * - Submit handler
- * - Error display
- * - Loading states
- * - Success/error callbacks
- *
- * Usage:
- *   <ProfileForm
- *     profile={user}
- *     isLoading={false}
- *     error={null}
- *     onSubmit={handleSubmit}
- *     onSuccess={handleSuccess}
- *     onError={handleError}
- *   />
- */
-
-import React, { useState, useCallback } from 'react';
-import { UserProfile, UserProfileUpdatePayload, ErrorResponse } from '../../types';
-import { validateEmail, validateName } from '../../utils/validation';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, PencilLine, X } from 'lucide-react';
+import { ErrorResponse, UserProfile, UserProfileUpdatePayload } from '../../types';
+import { validateEmail, validateName, validatePhone } from '../../utils/validation';
 
 interface ProfileFormProps {
   profile: UserProfile;
   isLoading: boolean;
   error: ErrorResponse | null;
-  onSubmit: (updates: UserProfileUpdatePayload) => Promise<void>;
-  onSuccess: (message: string) => void;
-  onError: (error: ErrorResponse) => void;
+  onSubmit: (updates: Partial<UserProfileUpdatePayload>) => Promise<void>;
 }
+
+type EditableField = keyof UserProfileUpdatePayload;
+
+type FieldConfig = {
+  field: EditableField;
+  label: string;
+  placeholder: string;
+  multiline?: boolean;
+  required?: boolean;
+  maxLength?: number;
+  normalize?: (value: string) => string;
+  validate?: (value: string) => string | null;
+};
+
+const fieldConfigs: FieldConfig[] = [
+  {
+    field: 'firstName',
+    label: 'Ho',
+    placeholder: 'Nhap ho cua ban',
+    required: true,
+    maxLength: 50,
+    normalize: (value) => value.trim(),
+    validate: (value) => {
+      if (!value.trim()) return 'Ho khong duoc de trong';
+      return validateName(value.trim()) ? null : 'Ho phai tu 1-50 ky tu';
+    },
+  },
+  {
+    field: 'lastName',
+    label: 'Ten',
+    placeholder: 'Nhap ten cua ban',
+    required: true,
+    maxLength: 50,
+    normalize: (value) => value.trim(),
+    validate: (value) => {
+      if (!value.trim()) return 'Ten khong duoc de trong';
+      return validateName(value.trim()) ? null : 'Ten phai tu 1-50 ky tu';
+    },
+  },
+  {
+    field: 'email',
+    label: 'Email',
+    placeholder: 'email.cua.ban@example.com',
+    required: true,
+    maxLength: 100,
+    normalize: (value) => value.trim(),
+    validate: (value) => {
+      if (!value.trim()) return 'Email khong duoc de trong';
+      return validateEmail(value.trim()) ? null : 'Vui long nhap dia chi email hop le';
+    },
+  },
+  {
+    field: 'phone',
+    label: 'So dien thoai',
+    placeholder: '+84 123 456 789',
+    maxLength: 50,
+    normalize: (value) => value.trim(),
+    validate: (value) => (validatePhone(value.trim()) ? null : 'So dien thoai khong hop le'),
+  },
+  {
+    field: 'location',
+    label: 'Dia chi',
+    placeholder: 'Thanh pho, Quoc gia',
+    maxLength: 100,
+    normalize: (value) => value.trim(),
+    validate: (value) => (value.trim().length <= 100 ? null : 'Dia chi khong vuot qua 100 ky tu'),
+  },
+  {
+    field: 'bio',
+    label: 'Gioi thieu',
+    placeholder: 'Gioi thieu mot chut ve ban...',
+    multiline: true,
+    maxLength: 500,
+    normalize: (value) => value.trim(),
+    validate: (value) => (value.trim().length <= 500 ? null : 'Gioi thieu khong vuot qua 500 ky tu'),
+  },
+];
+
+const fieldValueMap = (profile: UserProfile): Record<EditableField, string> => ({
+  firstName: profile.firstName || '',
+  lastName: profile.lastName || '',
+  email: profile.email || '',
+  phone: profile.phone || '',
+  location: profile.location || '',
+  bio: profile.bio || '',
+});
 
 export const ProfileForm: React.FC<ProfileFormProps> = ({
   profile,
   isLoading,
   error,
   onSubmit,
-  onSuccess,
-  onError,
 }) => {
-  const [formData, setFormData] = useState<UserProfileUpdatePayload>({
-    firstName: profile.firstName || '',
-    lastName: profile.lastName || '',
-    email: profile.email || '',
-    bio: profile.bio || '',
-  });
+  const [editingField, setEditingField] = useState<EditableField | null>(null);
+  const [drafts, setDrafts] = useState<Record<EditableField, string>>(() => fieldValueMap(profile));
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [savingField, setSavingField] = useState<EditableField | null>(null);
+  const [savedField, setSavedField] = useState<EditableField | null>(null);
 
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof UserProfileUpdatePayload, string>>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  useEffect(() => {
+    setDrafts(fieldValueMap(profile));
+  }, [profile]);
 
-  /**
-   * Handle input change
-   */
-  const handleInputChange = useCallback(
-    (field: keyof UserProfileUpdatePayload, value: string) => {
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
-      // Clear field error on change
-      setFieldErrors((prev) => ({
-        ...prev,
-        [field]: '',
-      }));
-    },
-    []
-  );
+  const profileValues = useMemo(() => fieldValueMap(profile), [profile]);
 
-  /**
-   * Validate form
-   */
-  const validateForm = (): boolean => {
-    const errors: typeof fieldErrors = {};
-
-    if (!formData.firstName.trim()) {
-      errors.firstName = 'First name is required';
-    } else if (!validateName(formData.firstName)) {
-      errors.firstName = 'First name must be 1-50 characters';
-    }
-
-    if (!formData.lastName.trim()) {
-      errors.lastName = 'Last name is required';
-    } else if (!validateName(formData.lastName)) {
-      errors.lastName = 'Last name must be 1-50 characters';
-    }
-
-    if (!formData.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!validateEmail(formData.email)) {
-      errors.email = 'Please enter a valid email address';
-    }
-
-    if (formData.bio && formData.bio.length > 500) {
-      errors.bio = 'Bio must not exceed 500 characters';
-    }
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+  const beginEdit = (field: EditableField) => {
+    setEditingField(field);
+    setFieldError(null);
+    setSavedField(null);
+    setDrafts((current) => ({
+      ...current,
+      [field]: profileValues[field],
+    }));
   };
 
-  /**
-   * Handle form submit
-   */
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+  const cancelEdit = () => {
+    if (!editingField) return;
+    setDrafts((current) => ({
+      ...current,
+      [editingField]: profileValues[editingField],
+    }));
+    setEditingField(null);
+    setFieldError(null);
+  };
 
-      if (!validateForm()) {
-        onError({
-          error: 'Please fix the errors above',
-          code: 'VALIDATION_ERROR',
-        });
-        return;
-      }
+  const handleSave = async (config: FieldConfig) => {
+    const rawValue = drafts[config.field] ?? '';
+    const normalizedValue = config.normalize ? config.normalize(rawValue) : rawValue;
+    const validationMessage = config.validate ? config.validate(normalizedValue) : null;
 
-      setIsSubmitting(true);
-      try {
-        await onSubmit(formData);
-        onSuccess('Profile updated successfully!');
-      } catch (err: any) {
-        onError(err);
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [formData, onSubmit, onSuccess, onError]
-  );
+    if (validationMessage) {
+      setFieldError(validationMessage);
+      return;
+    }
+
+    if (normalizedValue === profileValues[config.field]) {
+      setEditingField(null);
+      setFieldError(null);
+      return;
+    }
+
+    setSavingField(config.field);
+    setFieldError(null);
+    try {
+      await onSubmit({ [config.field]: normalizedValue } as Partial<UserProfileUpdatePayload>);
+      setSavedField(config.field);
+      setEditingField(null);
+      window.setTimeout(() => setSavedField((current) => (current === config.field ? null : current)), 2200);
+    } finally {
+      setSavingField(null);
+    }
+  };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-8 border border-gray-200">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Edit Profile</h2>
-
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-error-50 border border-error-200 rounded-lg">
-          <p className="text-error-700 text-sm font-medium">{error.error}</p>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* First Name */}
+    <div className="rounded-[28px] border border-[#E7E9F2] bg-white p-8 shadow-[0_12px_32px_rgba(21,22,46,0.04)]">
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            First Name <span className="text-error-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={formData.firstName}
-            onChange={(e) => handleInputChange('firstName', e.target.value)}
-            maxLength={50}
-            disabled={isLoading || isSubmitting}
-            className={`w-full px-4 py-2 border rounded-lg transition ${
-              fieldErrors.firstName
-                ? 'border-error-300 bg-error-50'
-                : 'border-gray-300 bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            placeholder="Enter your first name"
-          />
-          {fieldErrors.firstName && (
-            <p className="mt-1 text-sm text-error-600">{fieldErrors.firstName}</p>
-          )}
+          <h2 className="text-2xl font-bold tracking-[-0.03em] text-[#111827]">Thong tin tai khoan</h2>
+          <p className="mt-2 text-sm text-[#6B7280]">
+            Moi truong thong tin co the duoc chinh sua rieng va gui len bang PATCH.
+          </p>
         </div>
-
-        {/* Last Name */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Last Name <span className="text-error-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={formData.lastName}
-            onChange={(e) => handleInputChange('lastName', e.target.value)}
-            maxLength={50}
-            disabled={isLoading || isSubmitting}
-            className={`w-full px-4 py-2 border rounded-lg transition ${
-              fieldErrors.lastName
-                ? 'border-error-300 bg-error-50'
-                : 'border-gray-300 bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            placeholder="Enter your last name"
-          />
-          {fieldErrors.lastName && (
-            <p className="mt-1 text-sm text-error-600">{fieldErrors.lastName}</p>
-          )}
-        </div>
-
-        {/* Email */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email Address <span className="text-error-500">*</span>
-          </label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => handleInputChange('email', e.target.value)}
-            disabled={isLoading || isSubmitting}
-            className={`w-full px-4 py-2 border rounded-lg transition ${
-              fieldErrors.email
-                ? 'border-error-300 bg-error-50'
-                : 'border-gray-300 bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            placeholder="your.email@example.com"
-          />
-          {fieldErrors.email && (
-            <p className="mt-1 text-sm text-error-600">{fieldErrors.email}</p>
-          )}
-        </div>
-
-        {/* Bio */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Bio <span className="text-gray-500 text-xs">(optional)</span>
-          </label>
-          <textarea
-            value={formData.bio}
-            onChange={(e) => handleInputChange('bio', e.target.value)}
-            maxLength={500}
-            disabled={isLoading || isSubmitting}
-            rows={4}
-            className={`w-full px-4 py-2 border rounded-lg transition resize-none ${
-              fieldErrors.bio
-                ? 'border-error-300 bg-error-50'
-                : 'border-gray-300 bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            placeholder="Tell us about yourself..."
-          />
-          <div className="mt-1 flex justify-between items-center">
-            {fieldErrors.bio && (
-              <p className="text-sm text-error-600">{fieldErrors.bio}</p>
-            )}
-            <p className="text-xs text-gray-500 ml-auto">
-              {formData.bio.length}/500
-            </p>
+        {savedField ? (
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#EEF8F2] px-4 py-2 text-sm font-semibold text-[#1F7A45]">
+            <Check className="h-4 w-4" />
+            Da cap nhat
           </div>
-        </div>
+        ) : null}
+      </div>
 
-        {/* Phone (Optional) */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Phone <span className="text-gray-500 text-xs">(optional)</span>
-          </label>
-          <input
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => handleInputChange('phone', e.target.value)}
-            disabled={isLoading || isSubmitting}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            placeholder="+1 (555) 000-0000"
-          />
+      {error ? (
+        <div className="mb-6 rounded-2xl border border-lh-pink/30 bg-lh-pink/10 p-4">
+          <p className="text-sm font-semibold text-lh-pink">{error.error}</p>
         </div>
+      ) : null}
 
-        {/* Location (Optional) */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Location <span className="text-gray-500 text-xs">(optional)</span>
-          </label>
-          <input
-            type="text"
-            value={formData.location}
-            onChange={(e) => handleInputChange('location', e.target.value)}
-            disabled={isLoading || isSubmitting}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            placeholder="City, Country"
-          />
-        </div>
+      <div className="space-y-4">
+        {fieldConfigs.map((config) => {
+          const isEditing = editingField === config.field;
+          const isSaving = savingField === config.field;
+          const value = drafts[config.field] ?? '';
+          const displayValue = profileValues[config.field]?.trim() || 'Chua cap nhat';
 
-        {/* Submit Button */}
-        <div className="flex gap-4 pt-6">
-          <button
-            type="submit"
-            disabled={isLoading || isSubmitting}
-            className="flex-1 px-6 py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isSubmitting && <span className="animate-spin">⟳</span>}
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
-          </button>
+          return (
+            <div
+              key={config.field}
+              className="rounded-2xl border border-[#E7E9F2] bg-[#FBFCFE] p-5 transition hover:border-[#D9DEF2]"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9CA3AF]">{config.label}</div>
+                  {!isEditing ? (
+                    <div className="mt-3 whitespace-pre-wrap text-base leading-7 text-[#111827]">{displayValue}</div>
+                  ) : config.multiline ? (
+                    <div className="mt-3">
+                      <textarea
+                        value={value}
+                        maxLength={config.maxLength}
+                        rows={4}
+                        onChange={(event) => {
+                          setDrafts((current) => ({ ...current, [config.field]: event.target.value }));
+                          setFieldError(null);
+                        }}
+                        className="w-full rounded-2xl border border-[#D9DEF2] bg-white px-4 py-3 text-sm text-[#111827] outline-none transition focus:border-lh-blue focus:ring-4 focus:ring-[#EEF2FF]"
+                        placeholder={config.placeholder}
+                      />
+                      <div className="mt-2 flex justify-end text-xs text-[#9CA3AF]">{value.length}/{config.maxLength}</div>
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <input
+                        type={config.field === 'email' ? 'email' : 'text'}
+                        value={value}
+                        maxLength={config.maxLength}
+                        onChange={(event) => {
+                          setDrafts((current) => ({ ...current, [config.field]: event.target.value }));
+                          setFieldError(null);
+                        }}
+                        className="h-12 w-full rounded-2xl border border-[#D9DEF2] bg-white px-4 text-sm text-[#111827] outline-none transition focus:border-lh-blue focus:ring-4 focus:ring-[#EEF2FF]"
+                        placeholder={config.placeholder}
+                      />
+                    </div>
+                  )}
+                  {isEditing && fieldError ? <p className="mt-2 text-sm text-lh-pink">{fieldError}</p> : null}
+                </div>
 
-          <button
-            type="button"
-            disabled={isLoading || isSubmitting}
-            className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+                <div className="flex shrink-0 items-center gap-2">
+                  {!isEditing ? (
+                    <button
+                      type="button"
+                      onClick={() => beginEdit(config.field)}
+                      disabled={isLoading}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#D9DEF2] bg-white px-3.5 text-sm font-semibold text-lh-blue transition hover:bg-[#F8FAFF] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <PencilLine className="h-4 w-4" />
+                      Chinh sua
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(config)}
+                        disabled={isLoading || isSaving}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-lh-blue px-3.5 text-sm font-semibold text-white transition hover:bg-lh-navy disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" />
+                        {isSaving ? 'Dang luu...' : 'Luu'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        disabled={isLoading || isSaving}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3.5 text-sm font-semibold text-[#4B5563] transition hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" />
+                        Huy
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
+
+export default ProfileForm;

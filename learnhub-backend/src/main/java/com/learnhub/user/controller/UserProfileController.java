@@ -1,6 +1,7 @@
 package com.learnhub.user.controller;
 
 import com.learnhub.user.dto.request.UserProfileUpdateRequest;
+import com.learnhub.user.dto.request.UserProfilePatchRequest;
 import com.learnhub.user.dto.response.AvatarUploadResponse;
 import com.learnhub.user.dto.response.ErrorResponse;
 import com.learnhub.user.dto.response.UserProfileResponse;
@@ -63,6 +64,21 @@ public class UserProfileController {
         log.info("PUT /api/v1/users/{} - Update user profile", userId);
 
         UserProfileResponse updatedProfile = userService.updateUserProfile(userId, updateRequest);
+        return ResponseEntity.ok(updatedProfile);
+    }
+
+    /**
+     * PATCH /api/v1/users/{userId}
+     * Partially update a user profile.
+     */
+    @PatchMapping("/{userId}")
+    @PreAuthorize("hasRole('ROLE_USER')")
+    public ResponseEntity<UserProfileResponse> patchUserProfile(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UserProfilePatchRequest patchRequest) {
+        log.info("PATCH /api/v1/users/{} - Patch user profile", userId);
+
+        UserProfileResponse updatedProfile = userService.patchUserProfile(userId, patchRequest);
         return ResponseEntity.ok(updatedProfile);
     }
 
