@@ -62,6 +62,7 @@ public class SecurityConfig {
                         ).permitAll()
                         // Public key endpoint — no auth required (used by clients to verify JWTs)
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/public-key/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/taxonomy/options").permitAll()
                         // Admin endpoints — secured by @PreAuthorize on controller methods
                         .requestMatchers("/api/v1/auth/revoke-sessions", "/api/v1/auth/key-rotation").authenticated()
                         // GitHub OAuth callbacks are public (no JWT yet at callback time)

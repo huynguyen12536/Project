@@ -97,6 +97,13 @@
       <artifactId>postgresql</artifactId>
     </dependency>
 
+    <!-- MinIO -->
+    <dependency>
+      <groupId>io.minio</groupId>
+      <artifactId>minio</artifactId>
+      <version>8.5.11</version>
+    </dependency>
+
     <!-- Flyway -->
     <dependency>
       <groupId>org.flywaydb</groupId>

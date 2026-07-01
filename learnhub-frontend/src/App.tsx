@@ -8,6 +8,7 @@ import { RouteSkeleton } from './components/layouts/RouteSkeleton';
 import { queryClient } from './lib/queryClient';
 import { getRoleHomePath } from './lib/roleRouting';
 import { useAuthStore } from './stores/authStore';
+import { ToastContainer } from './ui-kit/Toast';
 import RequireRole from './components/auth/RequireRole';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -22,6 +23,12 @@ const InstructorLessonsPage = lazy(() => import('./pages/instructor/InstructorLe
 const InstructorStudentsPage = lazy(() => import('./pages/instructor/InstructorStudentsPage'));
 const InstructorRevenuePage = lazy(() => import('./pages/instructor/InstructorRevenuePage'));
 const InstructorSettingsPage = lazy(() => import('./pages/instructor/InstructorSettingsPage'));
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
+const AdminCoursesPage = lazy(() => import('./pages/admin/AdminCoursesPage'));
+const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage'));
+const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
+const AdminTaxonomyPage = lazy(() => import('./pages/admin/AdminTaxonomyPage'));
 const LoginPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.RegisterPage })));
 const VerifyEmailPage = lazy(() => import('./pages/auth/AuthPages').then((mod) => ({ default: mod.VerifyEmailPage })));
@@ -52,6 +59,28 @@ const RoleAwareDashboard: React.FC = () => {
   return <DashboardPage />;
 };
 
+const RoleAwareHome: React.FC = () => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const role = useAuthStore((state) => state.role);
+
+  if (isAuthenticated && role === 'admin') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <HomePage />;
+};
+
+const AdminSafePublicPage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const role = useAuthStore((state) => state.role);
+
+  if (isAuthenticated && role === 'admin') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 const AppRoutes = () => {
   const location = useLocation();
   const isAuthRoute =
@@ -63,17 +92,24 @@ const AppRoutes = () => {
     location.pathname.startsWith('/reset-password');
   const isLearningRoute = location.pathname.startsWith('/learn/');
   const isInstructorRoute = location.pathname.startsWith('/instructor/');
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   const routes = (
-    <PageTransition compact={isAuthRoute || isLearningRoute || isInstructorRoute}>
+    <PageTransition compact={isAuthRoute || isLearningRoute || isInstructorRoute || isAdminRoute}>
       <Suspense
-        fallback={<RouteSkeleton path={location.pathname} compact={isAuthRoute || isLearningRoute || isInstructorRoute} />}
+        fallback={<RouteSkeleton path={location.pathname} compact={isAuthRoute || isLearningRoute || isInstructorRoute || isAdminRoute} />}
       >
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<RoleAwareHome />} />
           <Route path="/dashboard" element={<RequireAuth><RoleAwareDashboard /></RequireAuth>} />
           <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
           <Route path="/learn/courses/:id" element={<RequireAuth><CoursePlayerPage /></RequireAuth>} />
+          <Route path="/admin" element={<RequireRole roles={['admin']}><AdminDashboardPage /></RequireRole>} />
+          <Route path="/admin/users" element={<RequireRole roles={['admin']}><AdminUsersPage /></RequireRole>} />
+          <Route path="/admin/courses" element={<RequireRole roles={['admin']}><AdminCoursesPage /></RequireRole>} />
+          <Route path="/admin/taxonomy" element={<RequireRole roles={['admin']}><AdminTaxonomyPage /></RequireRole>} />
+          <Route path="/admin/orders" element={<RequireRole roles={['admin']}><AdminOrdersPage /></RequireRole>} />
+          <Route path="/admin/system" element={<RequireRole roles={['admin']}><AdminSystemPage /></RequireRole>} />
           <Route path="/instructor/dashboard" element={<RequireRole roles={['instructor', 'admin']}><InstructorDashboardPage /></RequireRole>} />
           <Route path="/instructor/courses" element={<RequireRole roles={['instructor', 'admin']}><InstructorCoursesPage /></RequireRole>} />
           <Route path="/instructor/lessons" element={<RequireRole roles={['instructor', 'admin']}><InstructorLessonsPage /></RequireRole>} />
@@ -81,8 +117,8 @@ const AppRoutes = () => {
           <Route path="/instructor/revenue" element={<RequireRole roles={['instructor', 'admin']}><InstructorRevenuePage /></RequireRole>} />
           <Route path="/instructor/settings" element={<RequireRole roles={['instructor', 'admin']}><InstructorSettingsPage /></RequireRole>} />
           <Route path="/instructor" element={<Navigate to="/instructor/dashboard" replace />} />
-          <Route path="/courses" element={<CourseCatalogPage />} />
-          <Route path="/courses/:id" element={<CourseDetailPage />} />
+          <Route path="/courses" element={<AdminSafePublicPage><CourseCatalogPage /></AdminSafePublicPage>} />
+          <Route path="/courses/:id" element={<AdminSafePublicPage><CourseDetailPage /></AdminSafePublicPage>} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/signup" element={<RegisterPage />} />
@@ -97,7 +133,7 @@ const AppRoutes = () => {
     </PageTransition>
   );
 
-  if (isLearningRoute || isInstructorRoute) {
+  if (isLearningRoute || isInstructorRoute || isAdminRoute) {
     return routes;
   }
 
@@ -110,6 +146,7 @@ export const App: React.FC = () => {
       <UserProvider>
         <Router>
           <AppRoutes />
+          <ToastContainer />
         </Router>
       </UserProvider>
     </QueryClientProvider>

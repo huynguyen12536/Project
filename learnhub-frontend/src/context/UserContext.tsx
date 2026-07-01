@@ -40,6 +40,24 @@ interface UserProviderProps {
   children: ReactNode;
 }
 
+const withAvatarVersion = (avatarUrl?: string | null, version?: string | null) => {
+  if (!avatarUrl) {
+    return null;
+  }
+
+  if (!version) {
+    return avatarUrl;
+  }
+
+  const separator = avatarUrl.includes('?') ? '&' : '?';
+  return `${avatarUrl}${separator}v=${encodeURIComponent(version)}`;
+};
+
+const normalizeProfile = (profile: UserProfile): UserProfile => ({
+  ...profile,
+  avatarUrl: withAvatarVersion(profile.avatarUrl, profile.updatedAt),
+});
+
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const authUser = useAuthStore(state => state.user);
   const authRole = useAuthStore(state => state.role);
@@ -98,7 +116,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
     try {
       const { data } = await api.get<UserProfile>(`/users/${idToFetch}`);
-      setUser(data);
+      setUser(normalizeProfile(data));
     } catch (err: any) {
       // If API fails, use mock data for demonstration
       if (authUser) {
@@ -138,7 +156,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
       try {
         const response = await api.patch<UserProfile>(`/users/${userId}`, updates);
-        const data = response.data;
+        const data = normalizeProfile(response.data);
         setUser(data);
 
         // Update authStore to keep data consistent
@@ -196,7 +214,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
         // Update user avatar URL in state
         if (user) {
-          const updatedUser = { ...user, avatarUrl: data.avatarUrl };
+          const updatedUser = {
+            ...user,
+            avatarUrl: withAvatarVersion(data.avatarUrl, data.uploadedAt),
+            updatedAt: data.uploadedAt,
+          };
           setUser(updatedUser);
 
           // Update authStore

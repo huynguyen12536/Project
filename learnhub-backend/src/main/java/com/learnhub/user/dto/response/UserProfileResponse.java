@@ -38,10 +38,16 @@ public class UserProfileResponse {
 
     private String avatarUrl;
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    private String role;
+
+    private String phone;
+
+    private String location;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Instant createdAt;
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Instant updatedAt;
 
     /**
@@ -59,6 +65,9 @@ public class UserProfileResponse {
             .lastName(user.getLastName())
             .bio(user.getBio())
             .avatarUrl(user.getAvatarUrl())
+            .role(user.getRole())
+            .phone(user.getPhone())
+            .location(user.getLocation())
             .createdAt(convertToInstant(user.getCreatedAt()))
             .updatedAt(convertToInstant(user.getUpdatedAt()))
             .build();

@@ -1,6 +1,7 @@
 package com.learnhub.user.service;
 
 import com.learnhub.file.FileStorageService;
+import com.learnhub.common.util.AuthenticationUtil;
 import com.learnhub.user.dto.request.UserProfilePatchRequest;
 import com.learnhub.user.dto.request.UserProfileUpdateRequest;
 import com.learnhub.user.dto.response.AvatarUploadResponse;
@@ -10,11 +11,15 @@ import com.learnhub.user.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -31,10 +36,16 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
+    private final AuthenticationUtil authenticationUtil;
 
-    public UserService(UserRepository userRepository, FileStorageService fileStorageService) {
+    public UserService(
+        UserRepository userRepository,
+        FileStorageService fileStorageService,
+        AuthenticationUtil authenticationUtil
+    ) {
         this.userRepository = userRepository;
         this.fileStorageService = fileStorageService;
+        this.authenticationUtil = authenticationUtil;
     }
 
     /**
@@ -47,6 +58,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserProfileResponse getUserProfile(UUID userId) {
         log.debug("Fetching user profile: {}", userId);
+        ensureProfileAccess(userId);
 
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
@@ -78,6 +90,7 @@ public class UserService {
      */
     public UserProfileResponse updateUserProfile(UUID userId, UserProfileUpdateRequest updateRequest) {
         log.debug("Updating user profile: {}", userId);
+        ensureProfileAccess(userId);
 
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
@@ -106,6 +119,7 @@ public class UserService {
 
     public UserProfileResponse patchUserProfile(UUID userId, UserProfilePatchRequest patchRequest) {
         log.debug("Patching user profile: {}", userId);
+        ensureProfileAccess(userId);
 
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
@@ -167,6 +181,7 @@ public class UserService {
      */
     public AvatarUploadResponse uploadAvatar(UUID userId, MultipartFile file) throws IOException {
         log.debug("Uploading avatar for user: {}", userId);
+        ensureProfileAccess(userId);
 
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
@@ -178,7 +193,7 @@ public class UserService {
         User updatedUser = userRepository.save(user);
         if (previousAvatarUrl != null
             && !previousAvatarUrl.isBlank()
-            && !previousAvatarUrl.equals(newAvatarUrl)
+            && !isSameStorageObject(previousAvatarUrl, newAvatarUrl)
             && fileStorageService.fileExists(previousAvatarUrl)) {
             try {
                 fileStorageService.deleteFile(previousAvatarUrl);
@@ -224,5 +239,43 @@ public class UserService {
         // Delete user from database
         userRepository.deleteById(userId);
         log.info("User account deleted: {}", userId);
+    }
+
+    private void ensureProfileAccess(UUID userId) {
+        if (isCurrentUserAdmin()) {
+            return;
+        }
+
+        UUID currentUserId = authenticationUtil.getCurrentUserId();
+        if (!userId.equals(currentUserId)) {
+            log.warn("Forbidden profile access. currentUserId={}, targetUserId={}", currentUserId, userId);
+            throw new AccessDeniedException("You do not have permission to access this profile");
+        }
+    }
+
+    private boolean isCurrentUserAdmin() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            return false;
+        }
+
+        return authentication.getAuthorities().stream()
+            .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+    }
+
+    private boolean isSameStorageObject(String firstUrl, String secondUrl) {
+        return normalizeStoragePath(firstUrl).equals(normalizeStoragePath(secondUrl));
+    }
+
+    private String normalizeStoragePath(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            return "";
+        }
+
+        try {
+            return URI.create(fileUrl).getPath();
+        } catch (Exception exception) {
+            return fileUrl;
+        }
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,9 +44,9 @@ public class UserProfileController {
      * Retrieve user profile by ID.
      */
     @GetMapping("/{userId}")
-    @PreAuthorize("hasRole('ROLE_USER')")
+    @PreAuthorize("hasAnyRole('LEARNER', 'INSTRUCTOR', 'ADMIN')")
     public ResponseEntity<UserProfileResponse> getUserProfile(
-            @PathVariable UUID userId) {
+            @PathVariable("userId") UUID userId) {
         log.info("GET /api/v1/users/{} - Fetch user profile", userId);
 
         UserProfileResponse profile = userService.getUserProfile(userId);
@@ -57,9 +58,9 @@ public class UserProfileController {
      * Update user profile (all fields except avatar).
      */
     @PutMapping("/{userId}")
-    @PreAuthorize("hasRole('ROLE_USER')")
+    @PreAuthorize("hasAnyRole('LEARNER', 'INSTRUCTOR', 'ADMIN')")
     public ResponseEntity<UserProfileResponse> updateUserProfile(
-            @PathVariable UUID userId,
+            @PathVariable("userId") UUID userId,
             @Valid @RequestBody UserProfileUpdateRequest updateRequest) {
         log.info("PUT /api/v1/users/{} - Update user profile", userId);
 
@@ -72,9 +73,9 @@ public class UserProfileController {
      * Partially update a user profile.
      */
     @PatchMapping("/{userId}")
-    @PreAuthorize("hasRole('ROLE_USER')")
+    @PreAuthorize("hasAnyRole('LEARNER', 'INSTRUCTOR', 'ADMIN')")
     public ResponseEntity<UserProfileResponse> patchUserProfile(
-            @PathVariable UUID userId,
+            @PathVariable("userId") UUID userId,
             @Valid @RequestBody UserProfilePatchRequest patchRequest) {
         log.info("PATCH /api/v1/users/{} - Patch user profile", userId);
 
@@ -87,9 +88,9 @@ public class UserProfileController {
      * Upload user avatar (multipart file).
      */
     @PostMapping("/{userId}/avatar")
-    @PreAuthorize("hasRole('ROLE_USER')")
+    @PreAuthorize("hasAnyRole('LEARNER', 'INSTRUCTOR', 'ADMIN')")
     public ResponseEntity<AvatarUploadResponse> uploadAvatar(
-            @PathVariable UUID userId,
+            @PathVariable("userId") UUID userId,
             @RequestParam("file") MultipartFile file) {
         log.info("POST /api/v1/users/{}/avatar - Upload avatar", userId);
 
@@ -107,7 +108,7 @@ public class UserProfileController {
      * Retrieve all users with pagination (admin only).
      */
     @GetMapping
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<UserProfileResponse>> getAllUsers(Pageable pageable) {
         log.info("GET /api/v1/users - Fetch all users (paginated)");
 
@@ -120,8 +121,8 @@ public class UserProfileController {
      * Delete user account (admin or self only).
      */
     @DeleteMapping("/{userId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
-    public ResponseEntity<Void> deleteUser(@PathVariable UUID userId) {
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteUser(@PathVariable("userId") UUID userId) {
         log.info("DELETE /api/v1/users/{} - Delete user account", userId);
 
         userService.deleteUser(userId);
@@ -141,6 +142,18 @@ public class UserProfileController {
             .build();
 
         return ResponseEntity.badRequest().body(error);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException e) {
+        log.warn("Access denied: {}", e.getMessage());
+
+        ErrorResponse error = ErrorResponse.builder()
+            .error(e.getMessage())
+            .code("ACCESS_DENIED")
+            .build();
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
     }
 
     /**

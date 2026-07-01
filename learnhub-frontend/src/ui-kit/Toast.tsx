@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '../lib/cn';
 import { useUIStore } from '../stores/uiStore';
 import type { Toast as ToastType } from '../types/auth';
@@ -21,8 +22,12 @@ const ToastItem: React.FC<{ toast: ToastType }> = ({ toast }) => {
   }, [toast.id, toast.duration, removeToast]);
 
   return (
-    <div
+    <motion.div
       role="status"
+      initial={{ opacity: 0, x: 32, scale: 0.98 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 24, scale: 0.98 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
       className={cn(
         'pointer-events-auto flex items-center justify-between gap-4 rounded-lg px-4 py-3 shadow-lg',
         variantClasses[toast.variant]
@@ -37,7 +42,7 @@ const ToastItem: React.FC<{ toast: ToastType }> = ({ toast }) => {
       >
         ✕
       </button>
-    </div>
+    </motion.div>
   );
 };
 
@@ -48,9 +53,11 @@ export const ToastContainer: React.FC = () => {
   const toasts = useUIStore((s) => s.toasts);
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-80 flex-col gap-2">
-      {toasts.map((t) => (
-        <ToastItem key={t.id} toast={t} />
-      ))}
+      <AnimatePresence initial={false}>
+        {toasts.map((t) => (
+          <ToastItem key={t.id} toast={t} />
+        ))}
+      </AnimatePresence>
     </div>
   );
 };

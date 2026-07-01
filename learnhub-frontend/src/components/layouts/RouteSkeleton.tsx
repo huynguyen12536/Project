@@ -367,7 +367,7 @@ export const RouteSkeleton: React.FC<RouteSkeletonProps> = ({ path, compact = fa
       normalized.startsWith('/forgot-password') ||
       normalized.startsWith('/reset-password')
         ? <AuthSkeleton />
-        : normalized.startsWith('/instructor/')
+        : normalized.startsWith('/instructor/') || normalized.startsWith('/admin')
           ? <InstructorSkeleton />
         : normalized.startsWith('/learn/')
           ? <LearningSkeleton />

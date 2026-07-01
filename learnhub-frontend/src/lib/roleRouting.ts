@@ -10,7 +10,10 @@ export function normalizeRole(role?: string | null): UserRole {
 
 export function getRoleHomePath(role?: UserRole | string | null): string {
   const normalized = normalizeRole(role);
-  if (normalized === 'instructor' || normalized === 'admin') {
+  if (normalized === 'admin') {
+    return '/admin';
+  }
+  if (normalized === 'instructor') {
     return '/instructor/dashboard';
   }
   return '/dashboard';

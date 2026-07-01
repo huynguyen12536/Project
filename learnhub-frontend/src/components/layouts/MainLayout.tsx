@@ -283,6 +283,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   // Normalize role to lowercase and check if instructor or admin (case-insensitive)
   const normalizedRole = role?.toLowerCase();
   const isInstructorOrAdmin = normalizedRole === 'instructor' || normalizedRole === 'admin';
+  const isAdmin = normalizedRole === 'admin';
 
   const strings = copy[lang];
   const displayName = useMemo(() => {
@@ -341,14 +342,14 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
             <button
               onClick={() => {
                 setAccountOpen(false);
-                navigate('/instructor/dashboard');
+                navigate(isAdmin ? '/admin' : '/instructor/dashboard');
               }}
               className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[#F4F5FB]"
             >
               <GraduationCap className="h-5 w-5 text-lh-blue" />
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-lh-navy">Studio giảng day</div>
-                <div className="truncate text-xs text-lh-muted">Quan ly khoa hoc va bai giang</div>
+                <div className="truncate text-sm font-bold text-lh-navy">{isAdmin ? 'Trung tam quan tri' : 'Studio giảng day'}</div>
+                <div className="truncate text-xs text-lh-muted">{isAdmin ? 'Mo workspace van hanh va quan tri he thong' : 'Quan ly khoa hoc va bai giang'}</div>
               </div>
             </button>
           )}
