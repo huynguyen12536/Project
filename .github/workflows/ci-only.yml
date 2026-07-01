@@ -1,0 +1,144 @@
+# LearnHub CI Pipeline (Only - No Deployment)
+#
+# This workflow validates code quality and build integrity without deploying.
+# Runs on pull requests to main and manual dispatch.
+#
+# Steps:
+# 1. Checkout source
+# 2. Set up runtime (Java 21 and Node 20)
+# 3. Install dependencies (with caching)
+# 4. Static analysis (lint for frontend, Maven checks for backend)
+# 5. Type checking (TypeScript)
+# 6. Unit tests (Jest for frontend, Maven Tests for backend)
+# 7. Build verification (Maven and Vite)
+# 8. Upload build artifacts for debugging
+
+name: LearnHub CI Only
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------
+  # 1. BACKEND CI VALIDATION
+  # -------------------------------
+  backend-ci:
+    name: Backend CI (Quality & Tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: learnhub_test
+          POSTGRES_USER: learnhub_test
+          POSTGRES_PASSWORD: learnhub_test
+        options: >-
+          --health-cmd "pg_isready -U learnhub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run maven compile and checkstyle
+        working-directory: ./learnhub-backend
+        run: mvn compile -DskipTests -q
+
+      - name: Run backend tests
+        working-directory: ./learnhub-backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/learnhub_test
+          SPRING_DATASOURCE_USERNAME: learnhub_test
+          SPRING_DATASOURCE_PASSWORD: learnhub_test
+          REDIS_URL: redis://localhost:6379
+          SPRING_PROFILES_ACTIVE: test
+          GITHUB_OAUTH_CLIENT_ID: test-client-id
+          GITHUB_OAUTH_CLIENT_SECRET: test-client-secret
+          GITHUB_TOKEN_SECRET: test-token-secret-at-least-32-bytes-long-here
+          GITHUB_TOKEN_ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcw==
+        run: mvn test -B -V
+
+      - name: Build backend JAR
+        working-directory: ./learnhub-backend
+        run: mvn clean package -DskipTests -B
+
+      - name: Upload backend JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: learnhub-backend-jar
+          path: learnhub-backend/target/*.jar
+          retention-days: 7
+
+  # -------------------------------
+  # 2. FRONTEND CI VALIDATION
+  # -------------------------------
+  frontend-ci:
+    name: Frontend CI (Build & Lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: learnhub-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./learnhub-frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./learnhub-frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: ./learnhub-frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:8080/api
+        run: npm run build
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: learnhub-frontend-dist
+          path: learnhub-frontend/dist/
+          retention-days: 7

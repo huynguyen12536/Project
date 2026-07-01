@@ -91,12 +91,12 @@ const composerOptions: Array<{
   hint: string;
   icon: typeof BookCopy;
 }> = [
-  { key: 'category', label: 'Danh muc', hint: 'Nhom chinh cho giao vien', icon: BookCopy },
-  { key: 'subcategory', label: 'Phan loai con', hint: 'Chi tiet hoa danh muc', icon: FolderTree },
-  { key: 'level', label: 'Trinh do', hint: 'Bac do kho noi dung', icon: Layers3 },
-  { key: 'language', label: 'Ngon ngu', hint: 'Ngon ngu giang day', icon: Globe2 },
-  { key: 'tag', label: 'Tag', hint: 'Ky nang va chu de', icon: Tags },
-];
+    { key: 'category', label: 'Danh muc', hint: 'Nhom chinh cho giao vien', icon: BookCopy },
+    { key: 'subcategory', label: 'Phan loai con', hint: 'Chi tiet hoa danh muc', icon: FolderTree },
+    { key: 'level', label: 'Trinh do', hint: 'Bac do kho noi dung', icon: Layers3 },
+    { key: 'language', label: 'Ngon ngu', hint: 'Ngon ngu giang day', icon: Globe2 },
+    { key: 'tag', label: 'Tag', hint: 'Ky nang va chu de', icon: Tags },
+  ];
 
 const taxonomyFilterOptions: Array<{ value: TaxonomyFilter; label: string }> = [
   { value: 'all', label: 'Tat ca' },
@@ -237,7 +237,7 @@ const AdminTaxonomyPage: React.FC = () => {
     setTaxonomyPage(1);
   }, [taxonomyFilter, taxonomyQuery, taxonomySort]);
 
-  const taxonomyPageSize = 5;
+  const taxonomyPageSize = 10;
   const taxonomyPageCount = Math.max(1, Math.ceil(sortedTaxonomy.length / taxonomyPageSize));
   const safeTaxonomyPage = Math.min(taxonomyPage, taxonomyPageCount);
   const paginatedTaxonomy = sortedTaxonomy.slice(
