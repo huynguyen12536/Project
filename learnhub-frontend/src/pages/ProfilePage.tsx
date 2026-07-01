@@ -112,12 +112,6 @@ export const ProfilePage: React.FC = () => {
             isLoading={loading.isLoading}
             error={loading.error}
             onSubmit={(updates) => updateProfile(profile.id, updates)}
-            onSuccess={(message) => {
-              console.log('Profile updated:', message);
-            }}
-            onError={(error) => {
-              console.error('Update error:', error);
-            }}
           />
         </div>
       </div>

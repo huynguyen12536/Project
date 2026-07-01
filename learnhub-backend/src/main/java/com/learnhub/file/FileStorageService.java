@@ -25,6 +25,17 @@ public interface FileStorageService {
     String uploadFile(MultipartFile file, UUID userId) throws IOException;
 
     /**
+     * Upload a course-scoped asset such as a thumbnail.
+     *
+     * @param file the multipart file to upload
+     * @param userId the uploader user ID
+     * @param folder logical storage folder
+     * @return the public URL of the uploaded file
+     * @throws IOException if upload fails
+     */
+    String uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException;
+
+    /**
      * Delete a file from storage.
      *
      * @param fileUrl the public URL of the file to delete

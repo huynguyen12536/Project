@@ -1,14 +1,10 @@
 package com.learnhub.file;
 
-import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
-import io.minio.SetBucketPolicyArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -57,44 +53,6 @@ public class MinIOFileStorageService implements FileStorageService {
             .build();
     }
 
-    @PostConstruct
-    public void ensureBucketReady() {
-        try {
-            boolean bucketExists = minioClient.bucketExists(
-                BucketExistsArgs.builder().bucket(bucketName).build()
-            );
-
-            if (!bucketExists) {
-                minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-                log.info("Created MinIO bucket '{}'", bucketName);
-            }
-
-            String publicReadPolicy = """
-                {
-                  "Version":"2012-10-17",
-                  "Statement":[
-                    {
-                      "Effect":"Allow",
-                      "Principal":{"AWS":["*"]},
-                      "Action":["s3:GetObject"],
-                      "Resource":["arn:aws:s3:::%s/*"]
-                    }
-                  ]
-                }
-                """.formatted(bucketName);
-
-            minioClient.setBucketPolicy(
-                SetBucketPolicyArgs.builder()
-                    .bucket(bucketName)
-                    .config(publicReadPolicy)
-                    .build()
-            );
-            log.info("MinIO bucket '{}' is ready", bucketName);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed to initialize MinIO bucket '" + bucketName + "'", exception);
-        }
-    }
-
     @Override
     public String uploadFile(MultipartFile file, UUID userId) throws IOException {
         log.debug("Uploading avatar for user: {}", userId);
@@ -105,6 +63,20 @@ public class MinIOFileStorageService implements FileStorageService {
             ? String.format("avatars/%s/avatar", userId)
             : String.format("avatars/%s/avatar.%s", userId, extension.toLowerCase());
 
+        return uploadFileInternal(file, objectKey);
+    }
+
+    @Override
+    public String uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException {
+        log.debug("Uploading course file for user: {} in folder: {}", userId, folder);
+        validateCourseFile(file, folder);
+        String extension = getFileExtension(file.getOriginalFilename());
+        String fileId = UUID.randomUUID().toString();
+        String objectKey = String.format("%s/%s/%s.%s", folder, userId, fileId, extension.toLowerCase());
+        return uploadFileInternal(file, objectKey);
+    }
+
+    private String uploadFileInternal(MultipartFile file, String objectKey) throws IOException {
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
@@ -119,8 +91,30 @@ public class MinIOFileStorageService implements FileStorageService {
         }
 
         String publicUrl = buildPublicUrl(objectKey);
-        log.info("Avatar uploaded successfully for user {}: {}", userId, publicUrl);
+        log.info("File uploaded successfully: {}", publicUrl);
         return publicUrl;
+    }
+
+    private void validateCourseFile(MultipartFile file, String folder) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty");
+        }
+
+        if ("videos".equals(folder)) {
+            long maxVideoSize = 1024 * 1024 * 500; // 500 MB
+            if (file.getSize() > maxVideoSize) {
+                throw new IllegalArgumentException(
+                    String.format("Video size exceeds maximum of %d bytes", maxVideoSize)
+                );
+            }
+            Set<String> allowedVideoTypes = Set.of("video/mp4", "video/webm", "video/quicktime");
+            String mimeType = file.getContentType();
+            if (mimeType == null || !allowedVideoTypes.contains(mimeType)) {
+                throw new IllegalArgumentException("Invalid video type. Allowed: MP4, WebM, QuickTime");
+            }
+        } else if ("thumbnails".equals(folder)) {
+            validateFile(file); // uses existing image validation
+        }
     }
 
     @Override

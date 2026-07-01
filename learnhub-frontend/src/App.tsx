@@ -20,6 +20,7 @@ const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
 const InstructorDashboardPage = lazy(() => import('./pages/instructor/InstructorDashboardPage'));
 const InstructorCoursesPage = lazy(() => import('./pages/instructor/InstructorCoursesPage'));
 const InstructorLessonsPage = lazy(() => import('./pages/instructor/InstructorLessonsPage'));
+const InstructorCourseWizardPage = lazy(() => import('./pages/instructor/InstructorCourseWizardPage'));
 const InstructorStudentsPage = lazy(() => import('./pages/instructor/InstructorStudentsPage'));
 const InstructorRevenuePage = lazy(() => import('./pages/instructor/InstructorRevenuePage'));
 const InstructorSettingsPage = lazy(() => import('./pages/instructor/InstructorSettingsPage'));
@@ -112,6 +113,8 @@ const AppRoutes = () => {
           <Route path="/admin/system" element={<RequireRole roles={['admin']}><AdminSystemPage /></RequireRole>} />
           <Route path="/instructor/dashboard" element={<RequireRole roles={['instructor', 'admin']}><InstructorDashboardPage /></RequireRole>} />
           <Route path="/instructor/courses" element={<RequireRole roles={['instructor', 'admin']}><InstructorCoursesPage /></RequireRole>} />
+          <Route path="/instructor/courses/new" element={<RequireRole roles={['instructor', 'admin']}><InstructorCourseWizardPage /></RequireRole>} />
+          <Route path="/instructor/courses/:courseId" element={<RequireRole roles={['instructor', 'admin']}><InstructorCourseWizardPage /></RequireRole>} />
           <Route path="/instructor/lessons" element={<RequireRole roles={['instructor', 'admin']}><InstructorLessonsPage /></RequireRole>} />
           <Route path="/instructor/students" element={<RequireRole roles={['instructor', 'admin']}><InstructorStudentsPage /></RequireRole>} />
           <Route path="/instructor/revenue" element={<RequireRole roles={['instructor', 'admin']}><InstructorRevenuePage /></RequireRole>} />
