@@ -103,9 +103,28 @@ export const courseApi = {
     },
 
     // Admin Course APIs
+    getAllCoursesForAdmin: async (): Promise<Course[]> => {
+        const response = await apiClient.get<Course[]>('/v1/admin/courses');
+        return response.data;
+    },
+
     getPendingCourses: async (): Promise<Course[]> => {
         const response = await apiClient.get<Course[]>('/v1/admin/courses/pending');
         return response.data;
+    },
+
+    getAdminCourse: async (courseId: string): Promise<Course> => {
+        const response = await apiClient.get<Course>(`/v1/admin/courses/${courseId}`);
+        return response.data;
+    },
+
+    getCourseDetailsForAdmin: async (courseId: string): Promise<Course> => {
+        const response = await apiClient.get<Course>(`/v1/admin/courses/${courseId}/details`);
+        return response.data;
+    },
+
+    deleteCourse: async (courseId: string): Promise<void> => {
+        await apiClient.delete(`/v1/admin/courses/${courseId}`);
     },
 
     approveCourse: async (courseId: string): Promise<Course> => {

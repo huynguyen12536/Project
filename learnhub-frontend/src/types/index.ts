@@ -308,15 +308,18 @@ export interface CourseCoupon {
 export interface Course {
   id: string;
   instructorId: string;
+  instructorName?: string;
   title: string;
   subtitle?: string;
   description?: string;
   thumbnailUrl?: string;
   promoVideoUrl?: string;
   categoryId?: string;
+  categoryName?: string;
   subcategoryId?: string;
   levelId?: string;
   languageId?: string;
+  languageName?: string;
   status: CourseStatus;
   totalVideoDurationSeconds: number;
   lectureCount: number;
@@ -494,6 +497,12 @@ export interface MultipartUploadProgressSnapshot {
   overallProgress: number;
   uploadedParts: number[];
   partProgress: Record<number, number>;
+  speedBytesPerSecond: number;
+  chunkSizeBytes: number;
+  completedPartCount: number;
+  totalPartCount: number;
+  activePartCount: number;
+  maxConcurrency?: number;
   uploadId?: string;
   objectKey?: string;
   message?: string;

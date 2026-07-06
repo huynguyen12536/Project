@@ -187,7 +187,8 @@ public class UserService {
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
         String previousAvatarUrl = user.getAvatarUrl();
-        String newAvatarUrl = fileStorageService.uploadFile(file, userId);
+        var uploadResult = fileStorageService.uploadFile(file, userId);
+        String newAvatarUrl = uploadResult.getUrl();
         user.setAvatarUrl(newAvatarUrl);
 
         User updatedUser = userRepository.save(user);

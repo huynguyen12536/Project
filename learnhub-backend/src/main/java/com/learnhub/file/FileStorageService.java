@@ -18,11 +18,11 @@ public interface FileStorageService {
      *
      * @param file the multipart file to upload
      * @param userId the user ID (used for organizing storage)
-     * @return the public URL of the uploaded file
+     * @return the FileUploadResult with URL and checksum information
      * @throws IOException if upload fails
      * @throws IllegalArgumentException if file is invalid
      */
-    String uploadFile(MultipartFile file, UUID userId) throws IOException;
+    FileUploadResult uploadFile(MultipartFile file, UUID userId) throws IOException;
 
     /**
      * Upload a course-scoped asset such as a thumbnail.
@@ -30,10 +30,10 @@ public interface FileStorageService {
      * @param file the multipart file to upload
      * @param userId the uploader user ID
      * @param folder logical storage folder
-     * @return the public URL of the uploaded file
+     * @return the FileUploadResult with URL and checksum information
      * @throws IOException if upload fails
      */
-    String uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException;
+    FileUploadResult uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException;
 
     /**
      * Delete a file from storage.

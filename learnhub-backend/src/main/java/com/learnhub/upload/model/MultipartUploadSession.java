@@ -42,6 +42,12 @@ public class MultipartUploadSession {
     @Column(name = "total_size", nullable = false)
     private Long totalSize;
 
+    @Column(name = "chunk_size_bytes", nullable = false)
+    private Long chunkSizeBytes;
+
+    @Column(name = "max_concurrency", nullable = false)
+    private Integer maxConcurrency;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "asset_type", nullable = false, length = 50)
     private UploadAssetType assetType;

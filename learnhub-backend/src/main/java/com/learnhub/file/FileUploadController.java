@@ -1,9 +1,6 @@
 package com.learnhub.file;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -23,22 +20,22 @@ public class FileUploadController {
     private final FileStorageService fileStorageService;
 
     @PostMapping(value = "/upload-thumbnail", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<FileUploadResponse> uploadThumbnail(
+    public ResponseEntity<FileUploadResult> uploadThumbnail(
         @RequestParam("file") MultipartFile file,
         Authentication authentication
     ) throws IOException {
         UUID userId = UUID.fromString(authentication.getName());
-        String fileUrl = fileStorageService.uploadCourseFile(file, userId, "thumbnails");
-        return ResponseEntity.ok(FileUploadResponse.builder()
-            .url(fileUrl)
-            .build());
+        FileUploadResult result = fileStorageService.uploadCourseFile(file, userId, "thumbnails");
+        return ResponseEntity.ok(result);
     }
-}
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-class FileUploadResponse {
-    private String url;
+    @PostMapping(value = "/upload-video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<FileUploadResult> uploadVideo(
+        @RequestParam("file") MultipartFile file,
+        Authentication authentication
+    ) throws IOException {
+        UUID userId = UUID.fromString(authentication.getName());
+        FileUploadResult result = fileStorageService.uploadCourseFile(file, userId, "videos");
+        return ResponseEntity.ok(result);
+    }
 }

@@ -1,6 +1,7 @@
 package com.learnhub.catalog.course.controller;
 
 import com.learnhub.catalog.course.dto.request.RejectCourseRequest;
+import com.learnhub.catalog.course.dto.response.CourseDetailResponse;
 import com.learnhub.catalog.course.dto.response.CourseResponse;
 import com.learnhub.catalog.course.service.CourseService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +21,13 @@ import java.util.UUID;
 public class AdminCourseController {
     private final CourseService courseService;
 
+    @Operation(summary = "Get all courses for admin management")
+    @GetMapping
+    public ResponseEntity<List<CourseResponse>> getAllCourses() {
+        List<CourseResponse> allCourses = courseService.getAllCoursesForAdmin();
+        return ResponseEntity.ok(allCourses);
+    }
+
     @Operation(summary = "Get all pending courses for review")
     @GetMapping("/pending")
     public ResponseEntity<List<CourseResponse>> getPendingCourses() {
@@ -29,7 +37,7 @@ public class AdminCourseController {
 
     @Operation(summary = "Approve a course for publishing")
     @PostMapping("/{courseId}/approve")
-    public ResponseEntity<CourseResponse> approveCourse(@PathVariable UUID courseId) {
+    public ResponseEntity<CourseResponse> approveCourse(@PathVariable("courseId") UUID courseId) {
         CourseResponse course = courseService.approveCourse(courseId);
         return ResponseEntity.ok(course);
     }
@@ -37,19 +45,31 @@ public class AdminCourseController {
     @Operation(summary = "Reject a course with feedback")
     @PostMapping("/{courseId}/reject")
     public ResponseEntity<CourseResponse> rejectCourse(
-            @PathVariable UUID courseId,
+            @PathVariable("courseId") UUID courseId,
             @Valid @RequestBody RejectCourseRequest request
     ) {
         CourseResponse course = courseService.rejectCourse(courseId, request);
         return ResponseEntity.ok(course);
     }
 
-    @Operation(summary = "Get a specific course by ID")
+    @Operation(summary = "Get a specific course by ID for review")
     @GetMapping("/{courseId}")
-    public ResponseEntity<CourseResponse> getCourse(@PathVariable UUID courseId) {
-        return ResponseEntity.ok(courseService.getPendingCoursesForAdmin().stream()
-                .filter(c -> c.id().equals(courseId))
-                .findFirst()
-                .orElseThrow(() -> new com.learnhub.common.exception.ResourceNotFoundException("Course not found: " + courseId)));
+    public ResponseEntity<CourseResponse> getCourse(@PathVariable("courseId") UUID courseId) {
+        CourseResponse course = courseService.getAdminCourse(courseId);
+        return ResponseEntity.ok(course);
+    }
+
+    @Operation(summary = "Get course details for admin management")
+    @GetMapping("/{courseId}/details")
+    public ResponseEntity<CourseDetailResponse> getCourseDetails(@PathVariable("courseId") UUID courseId) {
+        CourseDetailResponse course = courseService.getCourseDetailForAdminWithSections(courseId);
+        return ResponseEntity.ok(course);
+    }
+
+    @Operation(summary = "Delete a course")
+    @DeleteMapping("/{courseId}")
+    public ResponseEntity<Void> deleteCourse(@PathVariable("courseId") UUID courseId) {
+        courseService.deleteCourse(courseId);
+        return ResponseEntity.noContent().build();
     }
 }

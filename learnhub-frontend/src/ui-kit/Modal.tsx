@@ -45,11 +45,11 @@ export const Modal: React.FC<ModalProps> = ({
     };
 
     document.addEventListener('keydown', onKey);
-    // Autofocus first focusable element.
+    // Autofocus first focusable element (prioritize form inputs).
     const t = setTimeout(() => {
       panelRef.current
         ?.querySelector<HTMLElement>(
-          'button:not([disabled]), input, textarea, select, a[href]'
+          'textarea, input:not([type="hidden"]), select, button:not([disabled]), a[href]'
         )
         ?.focus();
     }, 0);
@@ -77,7 +77,7 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={panelRef}
         className={cn(
-          'relative z-10 w-full rounded-2xl bg-white shadow-xl',
+          'relative z-50 w-full rounded-2xl bg-white shadow-xl',
           sizeClasses[size]
         )}
       >

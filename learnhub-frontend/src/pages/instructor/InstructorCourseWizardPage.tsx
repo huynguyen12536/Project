@@ -13,6 +13,8 @@ import {
   GripVertical,
   ImagePlus,
   Layers3,
+  PanelLeftClose,
+  PanelLeftOpen,
   Save,
   Sparkles,
   Trash2,
@@ -23,11 +25,12 @@ import InstructorWorkspaceLayout from '../../components/layouts/InstructorWorksp
 import { QuizBuilder, type QuizQuestion } from '../../components/QuizBuilder';
 import { courseApi } from '../../services/courseApi';
 import { fileUploadApi } from '../../services/fileUploadApi';
+import { multipartUploadApi } from '../../services/multipartUploadApi';
 import {
   MultipartVideoUploadTask,
   readVideoDurationSeconds,
 } from '../../services/multipartUploadService';
-import { getMultipartUploadDraft } from '../../services/multipartUploadStore';
+import { clearMultipartUploadDraft, getMultipartUploadDraft } from '../../services/multipartUploadStore';
 import { cn } from '../../lib/cn';
 import { useUIStore } from '../../stores/uiStore';
 import {
@@ -68,6 +71,21 @@ type LectureDraft = {
   videoUrl: string;
   durationSeconds: string;
   isFreePreview: boolean;
+};
+
+type LectureEditorDraftState = {
+  lectureDraft: LectureDraft;
+  quizQuestions: QuizQuestion[];
+  dirty: boolean;
+};
+
+type LectureVideoPreviewState = {
+  posterUrl?: string;
+  videoUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  durationSeconds?: number;
+  isLocal?: boolean;
 };
 
 const steps: Array<{ id: Step; label: string; detail: string; icon: React.ComponentType<{ className?: string }> }> = [
@@ -162,6 +180,89 @@ function formatSeconds(seconds: number) {
   return `${minutes} phut ${remainSeconds}s`;
 }
 
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unitIndex = 0;
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = size >= 100 || unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function getFileNameFromUrl(url: string) {
+  try {
+    const pathname = new URL(url).pathname;
+    const rawSegment = pathname.split('/').filter(Boolean).pop();
+    return rawSegment ? decodeURIComponent(rawSegment) : 'video-da-tai-len';
+  } catch {
+    return 'video-da-tai-len';
+  }
+}
+
+async function createVideoPosterFrame(file: File): Promise<string | null> {
+  if (typeof document === 'undefined' || !file.type.startsWith('video/')) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    const captureUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(captureUrl);
+    };
+
+    const fail = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    video.onerror = fail;
+    video.onloadedmetadata = () => {
+      const targetTime = Number.isFinite(video.duration) && video.duration > 1 ? Math.min(1, video.duration / 3) : 0;
+      video.currentTime = targetTime;
+    };
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+          fail();
+          return;
+        }
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          cleanup();
+          if (!blob) {
+            resolve(null);
+            return;
+          }
+
+          resolve(URL.createObjectURL(blob));
+        }, 'image/jpeg', 0.86);
+      } catch {
+        fail();
+      }
+    };
+
+    video.src = captureUrl;
+  });
+}
+
 function computeCurriculumStats(sections: CourseSection[]) {
   return sections.reduce(
     (acc, section) => {
@@ -208,8 +309,12 @@ export default function InstructorCourseWizardPage() {
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [lectureDraft, setLectureDraft] = useState<LectureDraft | null>(null);
+  const [lectureEditorDrafts, setLectureEditorDrafts] = useState<Record<string, LectureEditorDraftState>>({});
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [isCurriculumCollapsed, setIsCurriculumCollapsed] = useState(false);
   const [thumbnailProgress, setThumbnailProgress] = useState(0);
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
+  const [lectureVideoPreviews, setLectureVideoPreviews] = useState<Record<string, LectureVideoPreviewState>>({});
   const [videoUploadState, setVideoUploadState] = useState<Record<string, MultipartUploadProgressSnapshot>>({});
   const [pendingUploadDraft, setPendingUploadDraft] = useState<MultipartUploadDraft | null>(null);
   const [isBooting, setIsBooting] = useState(true);
@@ -221,6 +326,7 @@ export default function InstructorCourseWizardPage() {
   const [deletingTarget, setDeletingTarget] = useState<string | null>(null);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
   const videoUploadTasksRef = useRef<Record<string, MultipartVideoUploadTask>>({});
+  const lectureVideoPreviewsRef = useRef<Record<string, LectureVideoPreviewState>>({});
 
   const filteredSubcategories = useMemo(
     () =>
@@ -236,6 +342,32 @@ export default function InstructorCourseWizardPage() {
       .find((section) => section.id === selectedLectureRef.sectionId)
       ?.lectures.find((lecture) => lecture.id === selectedLectureRef.lectureId) ?? null;
   }, [sections, selectedLectureRef]);
+
+  const selectedLectureEditorDraft = useMemo(
+    () => (selectedLecture ? lectureEditorDrafts[selectedLecture.id] ?? null : null),
+    [lectureEditorDrafts, selectedLecture]
+  );
+
+  const selectedLectureVideoPreview = useMemo(() => {
+    if (!selectedLecture || !lectureDraft) return null;
+
+    const localPreview = lectureVideoPreviews[selectedLecture.id];
+    if (localPreview) {
+      return localPreview;
+    }
+
+    if (!lectureDraft.videoUrl) {
+      return null;
+    }
+
+    return {
+      videoUrl: lectureDraft.videoUrl,
+      fileName: getFileNameFromUrl(lectureDraft.videoUrl),
+      durationSeconds:
+        lectureDraft.durationSeconds.trim().length > 0 ? Number(lectureDraft.durationSeconds) : undefined,
+      isLocal: false,
+    } satisfies LectureVideoPreviewState;
+  }, [lectureDraft, lectureVideoPreviews, selectedLecture]);
 
   const curriculumStats = useMemo(() => computeCurriculumStats(sections), [sections]);
 
@@ -288,10 +420,128 @@ export default function InstructorCourseWizardPage() {
     (reviewChecks.filter((item) => item.passed).length / reviewChecks.length) * 100
   );
 
+  const updateLectureEditorDraft = (
+    lectureId: string,
+    nextLectureDraft: LectureDraft,
+    nextQuizQuestions: QuizQuestion[],
+    dirty = true
+  ) => {
+    setLectureEditorDrafts((previous) => ({
+      ...previous,
+      [lectureId]: {
+        lectureDraft: nextLectureDraft,
+        quizQuestions: nextQuizQuestions,
+        dirty,
+      },
+    }));
+  };
+
+  const removeLectureEditorDraft = (lectureId: string) => {
+    setLectureEditorDrafts((previous) => {
+      if (!previous[lectureId]) return previous;
+      const nextState = { ...previous };
+      delete nextState[lectureId];
+      return nextState;
+    });
+  };
+
+  const revokeLectureVideoPreview = (preview?: LectureVideoPreviewState) => {
+    if (!preview?.isLocal) return;
+    if (preview.posterUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(preview.posterUrl);
+    }
+    if (preview.videoUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(preview.videoUrl);
+    }
+  };
+
+  const setLectureVideoPreview = (lectureId: string, nextPreview: LectureVideoPreviewState | null) => {
+    setLectureVideoPreviews((previous) => {
+      const current = previous[lectureId];
+      if (current) {
+        revokeLectureVideoPreview(current);
+      }
+
+      if (!nextPreview) {
+        const nextState = { ...previous };
+        delete nextState[lectureId];
+        lectureVideoPreviewsRef.current = nextState;
+        return nextState;
+      }
+
+      const nextState = {
+        ...previous,
+        [lectureId]: nextPreview,
+      };
+      lectureVideoPreviewsRef.current = nextState;
+      return nextState;
+    });
+  };
+
+  const clearAllLectureVideoPreviews = () => {
+    Object.values(lectureVideoPreviewsRef.current).forEach((preview) => {
+      revokeLectureVideoPreview(preview);
+    });
+    lectureVideoPreviewsRef.current = {};
+    setLectureVideoPreviews({});
+  };
+
+  const updateActiveLectureDraft = (updater: (current: LectureDraft) => LectureDraft) => {
+    if (!selectedLecture) return;
+
+    setLectureDraft((previous) => {
+      const baseDraft =
+        previous ??
+        lectureEditorDrafts[selectedLecture.id]?.lectureDraft ??
+        createDefaultLectureDraft(selectedLecture);
+      const nextDraft = updater(baseDraft);
+      updateLectureEditorDraft(
+        selectedLecture.id,
+        nextDraft,
+        lectureEditorDrafts[selectedLecture.id]?.quizQuestions ?? quizQuestions,
+        true
+      );
+      return nextDraft;
+    });
+  };
+
+  const updateActiveQuizQuestions = (nextQuestions: QuizQuestion[]) => {
+    setQuizQuestions(nextQuestions);
+
+    if (!selectedLecture) return;
+
+    const baseDraft =
+      lectureDraft ??
+      lectureEditorDrafts[selectedLecture.id]?.lectureDraft ??
+      createDefaultLectureDraft(selectedLecture);
+
+    updateLectureEditorDraft(selectedLecture.id, baseDraft, nextQuestions, true);
+  };
+
   useEffect(() => {
     void bootstrapPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
+
+  useEffect(() => {
+    return () => {
+      if (thumbnailPreviewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(thumbnailPreviewUrl);
+      }
+    };
+  }, [thumbnailPreviewUrl]);
+
+  useEffect(() => {
+    lectureVideoPreviewsRef.current = lectureVideoPreviews;
+  }, [lectureVideoPreviews]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(lectureVideoPreviewsRef.current).forEach((preview) => {
+        revokeLectureVideoPreview(preview);
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!courseId) {
@@ -333,10 +583,38 @@ export default function InstructorCourseWizardPage() {
       return;
     }
 
-    setLectureDraft(createDefaultLectureDraft(selectedLecture));
-    setQuizQuestions(parseQuizContent(selectedLecture.content));
-    setPendingUploadDraft(getMultipartUploadDraft(buildLectureUploadContextKey(selectedLecture.id)));
-  }, [selectedLecture?.id]);
+    const localDraft = lectureEditorDrafts[selectedLecture.id];
+    setLectureDraft(localDraft?.lectureDraft ?? createDefaultLectureDraft(selectedLecture));
+    setQuizQuestions(localDraft?.quizQuestions ?? parseQuizContent(selectedLecture.content));
+    const contextKey = buildLectureUploadContextKey(selectedLecture.id);
+    const draft = getMultipartUploadDraft(contextKey);
+
+    if (!draft) {
+      setPendingUploadDraft(null);
+      return;
+    }
+
+    let disposed = false;
+    setPendingUploadDraft(draft);
+
+    void (async () => {
+      try {
+        await multipartUploadApi.getStatus(draft.uploadId, draft.objectKey);
+        if (!disposed) {
+          setPendingUploadDraft(getMultipartUploadDraft(contextKey));
+        }
+      } catch {
+        clearMultipartUploadDraft(contextKey);
+        if (!disposed) {
+          setPendingUploadDraft(null);
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [selectedLecture?.id, lectureEditorDrafts]);
 
   const bootstrapPage = async () => {
     setIsBooting(true);
@@ -348,6 +626,8 @@ export default function InstructorCourseWizardPage() {
         setCourse(null);
         setSections([]);
         setBasicFormData(initialBasicFormData);
+        setThumbnailPreviewUrl(null);
+        clearAllLectureVideoPreviews();
         setSelectedLectureRef(null);
         setSectionDrafts({});
         setExpandedSections({});
@@ -371,6 +651,8 @@ export default function InstructorCourseWizardPage() {
         levelId: courseData.levelId ?? '',
         languageId: courseData.languageId ?? '',
       });
+      setThumbnailPreviewUrl(null);
+      clearAllLectureVideoPreviews();
       setSections(curriculumData);
       setSectionDrafts(
         Object.fromEntries(curriculumData.map((section) => [section.id, section.title]))
@@ -441,11 +723,24 @@ export default function InstructorCourseWizardPage() {
     if (!file) return;
 
     setIsUploadingThumbnail(true);
+    const localPreviewUrl = URL.createObjectURL(file);
+    setThumbnailPreviewUrl((current) => {
+      if (current?.startsWith('blob:')) {
+        URL.revokeObjectURL(current);
+      }
+      return localPreviewUrl;
+    });
     try {
-      const url = await fileUploadApi.uploadThumbnail(file, setThumbnailProgress);
-      setBasicFormData((previous) => ({ ...previous, thumbnailUrl: url }));
+      const result = await fileUploadApi.uploadThumbnail(file, setThumbnailProgress);
+      setBasicFormData((previous) => ({ ...previous, thumbnailUrl: result.url }));
       addToast('Da tai thumbnail len', 'success');
     } catch (error: any) {
+      setThumbnailPreviewUrl((current) => {
+        if (current?.startsWith('blob:')) {
+          URL.revokeObjectURL(current);
+        }
+        return null;
+      });
       addToast(error?.response?.data?.message || 'Khong tai duoc thumbnail', 'error');
     } finally {
       setIsUploadingThumbnail(false);
@@ -512,9 +807,20 @@ export default function InstructorCourseWizardPage() {
 
     setDeletingTarget(sectionId);
     try {
+      const removedSection = sections.find((section) => section.id === sectionId);
       await courseApi.deleteCourseSection(course.id, sectionId);
       const nextSections = sections.filter((section) => section.id !== sectionId);
       syncSections(nextSections);
+      if (removedSection) {
+        setLectureEditorDrafts((previous) => {
+          const nextState = { ...previous };
+          removedSection.lectures.forEach((lecture) => {
+            delete nextState[lecture.id];
+          });
+          return nextState;
+        });
+        removedSection.lectures.forEach((lecture) => setLectureVideoPreview(lecture.id, null));
+      }
       addToast('Da xoa chuong', 'success');
     } catch (error: any) {
       addToast(error?.response?.data?.message || 'Khong xoa duoc chuong', 'error');
@@ -551,6 +857,7 @@ export default function InstructorCourseWizardPage() {
       syncSections(nextSections);
       setExpandedSections((previous) => ({ ...previous, [sectionId]: true }));
       setSelectedLectureRef({ sectionId, lectureId: newLecture.id });
+      updateLectureEditorDraft(newLecture.id, createDefaultLectureDraft(newLecture), parseQuizContent(newLecture.content), false);
       addToast('Da tao bai giang moi', 'success');
     } catch (error: any) {
       addToast(error?.response?.data?.message || 'Khong tao duoc bai giang', 'error');
@@ -565,13 +872,24 @@ export default function InstructorCourseWizardPage() {
 
     const lectureId = selectedLecture.id;
     const contextKey = buildLectureUploadContextKey(lectureId);
+    const durationSeconds = await readVideoDurationSeconds(file);
+    const localVideoUrl = URL.createObjectURL(file);
+    const localPosterUrl = await createVideoPosterFrame(file);
+
+    setLectureVideoPreview(lectureId, {
+      videoUrl: localVideoUrl,
+      posterUrl: localPosterUrl ?? undefined,
+      fileName: file.name,
+      fileSize: file.size,
+      durationSeconds,
+      isLocal: true,
+    });
 
     if (videoUploadTasksRef.current[lectureId]) {
       await videoUploadTasksRef.current[lectureId].cancel();
       delete videoUploadTasksRef.current[lectureId];
     }
 
-    const durationSeconds = await readVideoDurationSeconds(file);
     const task = new MultipartVideoUploadTask(
       file,
       {
@@ -592,29 +910,33 @@ export default function InstructorCourseWizardPage() {
 
     try {
       const completed = await task.start();
-      setLectureDraft((previous) =>
-        previous
-          ? {
-              ...previous,
-              videoUrl: completed.publicUrl,
-              durationSeconds:
-                previous.durationSeconds.trim().length > 0
-                  ? previous.durationSeconds
-                  : completed.durationSeconds
-                    ? String(completed.durationSeconds)
-                    : previous.durationSeconds,
-            }
-          : previous
-      );
+      updateActiveLectureDraft((previous) => ({
+        ...previous,
+        videoUrl: completed.publicUrl,
+        durationSeconds:
+          previous.durationSeconds.trim().length > 0
+            ? previous.durationSeconds
+            : completed.durationSeconds
+              ? String(completed.durationSeconds)
+              : previous.durationSeconds,
+      }));
       setPendingUploadDraft(null);
       addToast('Da tai video len object storage. Bam Luu bai giang de gan video vao bai hoc.', 'success');
     } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 404 || status === 409 || status === 410 || status === 502) {
+        clearMultipartUploadDraft(contextKey);
+        setPendingUploadDraft(null);
+      }
+
       if (error?.message === 'Upload cancelled') {
         addToast('Da huy upload video', 'warning');
       } else {
         addToast(error?.response?.data?.message || error?.message || 'Khong tai duoc video', 'error');
       }
-      setPendingUploadDraft(getMultipartUploadDraft(contextKey));
+      if (!(status === 404 || status === 409 || status === 410 || status === 502)) {
+        setPendingUploadDraft(getMultipartUploadDraft(contextKey));
+      }
     } finally {
       delete videoUploadTasksRef.current[lectureId];
     }
@@ -672,6 +994,12 @@ export default function InstructorCourseWizardPage() {
           : section
       );
       syncSections(nextSections);
+      updateLectureEditorDraft(
+        updatedLecture.id,
+        createDefaultLectureDraft(updatedLecture),
+        parseQuizContent(updatedLecture.content),
+        false
+      );
       addToast('Da luu bai giang', 'success');
     } catch (error: any) {
       addToast(error?.response?.data?.message || 'Khong luu duoc bai giang', 'error');
@@ -696,6 +1024,8 @@ export default function InstructorCourseWizardPage() {
           : section
       );
       syncSections(nextSections);
+      removeLectureEditorDraft(selectedLecture.id);
+      setLectureVideoPreview(selectedLecture.id, null);
       addToast('Da xoa bai giang', 'success');
     } catch (error: any) {
       addToast(error?.response?.data?.message || 'Khong xoa duoc bai giang', 'error');
@@ -834,6 +1164,54 @@ export default function InstructorCourseWizardPage() {
               placeholder="https://youtube.com/..."
             />
           </div>
+
+          <div className="md:col-span-2 rounded-3xl border border-gray-200 bg-gray-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Thumbnail khoa hoc</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Nen co anh nen doc ro o tile 16:9, uu tien du an that hoac mockup khoa hoc.
+                </p>
+              </div>
+              {basicFormData.thumbnailUrl || thumbnailPreviewUrl ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setThumbnailPreviewUrl((current) => {
+                      if (current?.startsWith('blob:')) {
+                        URL.revokeObjectURL(current);
+                      }
+                      return null;
+                    });
+                    setBasicFormData((previous) => ({ ...previous, thumbnailUrl: '' }));
+                  }}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Chon anh khac
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="mt-5">
+              {basicFormData.thumbnailUrl || thumbnailPreviewUrl ? (
+                <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
+                  <img
+                    src={thumbnailPreviewUrl ?? basicFormData.thumbnailUrl}
+                    alt="Thumbnail khoa hoc"
+                    className="aspect-video w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <FileDropzone
+                  accept="image/*"
+                  progress={isUploadingThumbnail ? thumbnailProgress : undefined}
+                  onFiles={handleThumbnailUpload}
+                  className="min-h-[220px] rounded-3xl bg-white"
+                />
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-3">
@@ -885,46 +1263,6 @@ export default function InstructorCourseWizardPage() {
             ))}
           </div>
         </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-          className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm"
-        >
-          <p className="text-sm font-semibold text-gray-900">Thumbnail khoa hoc</p>
-          <p className="mt-1 text-sm text-gray-500">
-            Nen co anh nen doc ro o tile 16:9, uu tien du an that hoac mockup khoa hoc.
-          </p>
-
-          <div className="mt-5">
-            {basicFormData.thumbnailUrl ? (
-              <div className="overflow-hidden rounded-3xl border border-gray-200">
-                <img
-                  src={basicFormData.thumbnailUrl}
-                  alt="Thumbnail khoa hoc"
-                  className="aspect-video w-full object-cover"
-                />
-              </div>
-            ) : (
-              <FileDropzone
-                accept="image/*"
-                progress={isUploadingThumbnail ? thumbnailProgress : undefined}
-                onFiles={handleThumbnailUpload}
-                className="min-h-[220px] rounded-3xl"
-              />
-            )}
-          </div>
-
-          {basicFormData.thumbnailUrl ? (
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button type="button" variant="secondary" onClick={() => setBasicFormData((previous) => ({ ...previous, thumbnailUrl: '' }))}>
-                <ImagePlus className="h-4 w-4" />
-                Chon anh khac
-              </Button>
-            </div>
-          ) : null}
-        </motion.div>
       </div>
     </div>
   );
@@ -932,7 +1270,7 @@ export default function InstructorCourseWizardPage() {
   const renderLectureEditor = () => {
     if (!selectedLecture || !lectureDraft) {
 	    return (
-        <div className="flex min-h-[480px] flex-col items-center justify-center rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center shadow-sm">
+        <div className="flex min-h-[480px] flex-col items-center justify-center rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center shadow-sm xl:h-full">
           <Layers3 className="h-10 w-10 text-gray-300" />
           <p className="mt-4 text-sm font-semibold text-gray-800">Chon mot bai giang de chinh sua</p>
           <p className="mt-1 max-w-sm text-sm text-gray-500">
@@ -948,7 +1286,7 @@ export default function InstructorCourseWizardPage() {
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -12 }}
-        className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm"
+        className="flex min-h-[560px] flex-col rounded-3xl border border-gray-200 bg-white p-6 shadow-sm xl:h-full xl:min-h-0"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -957,6 +1295,7 @@ export default function InstructorCourseWizardPage() {
               <Badge variant={selectedLecture.type === 'VIDEO' ? 'info' : selectedLecture.type === 'ARTICLE' ? 'default' : 'warning'}>
                 {lectureTypeLabels[selectedLecture.type]}
               </Badge>
+              {selectedLectureEditorDraft?.dirty ? <Badge variant="warning">Chua luu</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-gray-500">
               Cap nhat noi dung, asset va cach hoc vien tiep can bai hoc nay.
@@ -975,56 +1314,127 @@ export default function InstructorCourseWizardPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-2">
-          <Input
-            label="Ten bai giang"
-            value={lectureDraft.title}
-            onChange={(event) =>
-              setLectureDraft((previous) =>
-                previous ? { ...previous, title: event.target.value } : previous
-              )
-            }
-            placeholder="Dat ten theo ket qua hoc tap cu the"
-          />
+        <div className="mt-6 flex-1 space-y-6 overflow-y-auto pr-1">
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Input
+              label="Ten bai giang"
+              value={lectureDraft.title}
+              onChange={(event) => updateActiveLectureDraft((previous) => ({ ...previous, title: event.target.value }))}
+              placeholder="Dat ten theo ket qua hoc tap cu the"
+            />
 
-          <Input
-            label="Thoi luong (giay)"
-            value={lectureDraft.durationSeconds}
-            type="number"
-            onChange={(event) =>
-              setLectureDraft((previous) =>
-                previous ? { ...previous, durationSeconds: event.target.value } : previous
-              )
-            }
-            placeholder="600"
-          />
-        </div>
+            <Input
+              label="Thoi luong (giay)"
+              value={lectureDraft.durationSeconds}
+              type="number"
+              onChange={(event) =>
+                updateActiveLectureDraft((previous) => ({ ...previous, durationSeconds: event.target.value }))
+              }
+              placeholder="600"
+            />
+          </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
-          <Toggle
-            checked={lectureDraft.isFreePreview}
-            onChange={(checked) =>
-              setLectureDraft((previous) =>
-                previous ? { ...previous, isFreePreview: checked } : previous
-              )
-            }
-            label="Cho phep hoc vien xem thu bai nay"
-          />
-          <Badge variant="default">Loai: {lectureTypeLabels[lectureDraft.type]}</Badge>
-        </div>
+          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+            <Toggle
+              checked={lectureDraft.isFreePreview}
+              onChange={(checked) =>
+                updateActiveLectureDraft((previous) => ({ ...previous, isFreePreview: checked }))
+              }
+              label="Cho phep hoc vien xem thu bai nay"
+            />
+            <Badge variant="default">Loai: {lectureTypeLabels[lectureDraft.type]}</Badge>
+          </div>
 
 	        {lectureDraft.type === LectureType.VIDEO ? (
-	          <div className="mt-6 space-y-5">
-            <Input
-              label="Video URL"
-              value={lectureDraft.videoUrl}
-              onChange={(event) =>
-                setLectureDraft((previous) =>
-                  previous ? { ...previous, videoUrl: event.target.value } : previous
-                )
-              }
-              placeholder="https://cdn.learnhub/... hoac link embed"
-            />
+	          <div className="space-y-5">
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Media bai giang</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Sau khi upload, giao dien giu lai preview de ban kiem tra nhanh truoc khi luu bai giang.
+                    </p>
+                  </div>
+                  {lectureDraft.videoUrl ? (
+                    <a
+                      href={lectureDraft.videoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                      Mo tep video
+                    </a>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 overflow-hidden rounded-[28px] border border-gray-200 bg-gray-950">
+                  <div className="relative aspect-video w-full">
+                    {selectedLectureVideoPreview?.posterUrl ? (
+                      <img
+                        src={selectedLectureVideoPreview.posterUrl}
+                        alt="Thumbnail bai giang"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : selectedLectureVideoPreview?.videoUrl ? (
+                      <video
+                        src={selectedLectureVideoPreview.videoUrl}
+                        controls
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950">
+                        <div className="text-center">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white">
+                            <Video className="h-6 w-6" />
+                          </div>
+                          <p className="mt-4 text-sm font-semibold text-white">Chua co media duoc gan</p>
+                          <p className="mt-1 text-xs text-gray-300">
+                            Upload video de xem cover va thong tin media ngay tai day.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/70 via-black/20 to-transparent p-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Lecture media</p>
+                        <p className="mt-1 max-w-[70%] truncate text-sm font-semibold text-white">
+                          {selectedLectureVideoPreview?.fileName || lectureDraft.title || 'Video bai giang'}
+                        </p>
+                      </div>
+                      <Badge variant={lectureDraft.videoUrl ? 'success' : 'default'}>
+                        {lectureDraft.videoUrl ? 'Da gan video' : 'Cho upload'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Tep</p>
+                    <p className="mt-2 truncate text-sm font-semibold text-gray-900">
+                      {selectedLectureVideoPreview?.fileName || 'Chua co'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Dung luong</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900">
+                      {selectedLectureVideoPreview?.fileSize ? formatBytes(selectedLectureVideoPreview.fileSize) : 'Dang cho'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">Thoi luong</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900">
+                      {selectedLectureVideoPreview?.durationSeconds
+                        ? formatSeconds(selectedLectureVideoPreview.durationSeconds)
+                        : lectureDraft.durationSeconds.trim().length > 0
+                          ? formatSeconds(Number(lectureDraft.durationSeconds))
+                          : 'Dang do'}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
 	            <div>
 	              <p className="mb-2 text-sm font-medium text-gray-700">Tai video truc tiep</p>
@@ -1034,263 +1444,355 @@ export default function InstructorCourseWizardPage() {
 	                onFiles={handleUploadVideo}
 	                className="rounded-3xl"
 	              />
-                <div className="mt-3 space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Direct multipart upload</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Video duoc chia chunk 10MB va tai truc tiep len MinIO, backend chi cap session va presigned URL.
-                      </p>
+                  <div className="mt-3 space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Direct multipart upload</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Video duoc chia chunk lon va presign theo lo de giam request vao backend, sau do upload truc tiep len MinIO.
+                        </p>
+                      </div>
+                      {videoUploadState[selectedLecture.id]?.phase === 'uploading' ||
+                      videoUploadState[selectedLecture.id]?.phase === 'starting' ||
+                      videoUploadState[selectedLecture.id]?.phase === 'completing' ? (
+                        <Button type="button" variant="secondary" onClick={() => void handleCancelVideoUpload()}>
+                          Huy upload
+                        </Button>
+                      ) : null}
                     </div>
-                    {videoUploadState[selectedLecture.id]?.phase === 'uploading' ||
-                    videoUploadState[selectedLecture.id]?.phase === 'starting' ||
-                    videoUploadState[selectedLecture.id]?.phase === 'completing' ? (
-                      <Button type="button" variant="secondary" onClick={() => void handleCancelVideoUpload()}>
-                        Huy upload
-                      </Button>
+
+                    {pendingUploadDraft ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+                        Phat hien session upload chua hoan tat cho bai giang nay. Neu tab van mo, he thong se tu tiep tuc khi mang quay lai. Neu da tai lai trang, chon lai dung file video cu de resume, he thong chi upload cac part con thieu.
+                      </div>
+                    ) : null}
+
+                    {videoUploadState[selectedLecture.id] ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-gray-600">
+                          <span>{videoUploadState[selectedLecture.id].message || 'San sang upload'}</span>
+                          <span>{videoUploadState[selectedLecture.id].overallProgress}%</span>
+                        </div>
+                        <ProgressBar value={videoUploadState[selectedLecture.id].overallProgress} />
+                        <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                          <span>
+                            {formatBytes(videoUploadState[selectedLecture.id].uploadedBytes)} /{' '}
+                            {formatBytes(videoUploadState[selectedLecture.id].totalBytes)}
+                          </span>
+                          <span>
+                            {videoUploadState[selectedLecture.id].completedPartCount}/
+                            {videoUploadState[selectedLecture.id].totalPartCount} part da xong
+                          </span>
+                          <span>
+                            Toc do: {formatBytes(videoUploadState[selectedLecture.id].speedBytesPerSecond)}/s
+                          </span>
+                          <span>
+                            Chunk: {formatBytes(videoUploadState[selectedLecture.id].chunkSizeBytes)}
+                          </span>
+                          <span>
+                            Luong song song: {videoUploadState[selectedLecture.id].activePartCount}/
+                            {videoUploadState[selectedLecture.id].maxConcurrency ?? 0}
+                          </span>
+                          <span>Trang thai: {videoUploadState[selectedLecture.id].phase}</span>
+                        </div>
+                      </div>
                     ) : null}
                   </div>
-
-                  {pendingUploadDraft ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-                      Phat hien session upload chua hoan tat cho bai giang nay. Chon lai dung file video cu de tiep tuc, he thong chi upload cac part con thieu.
-                    </div>
-                  ) : null}
-
-                  {videoUploadState[selectedLecture.id] ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>{videoUploadState[selectedLecture.id].message || 'San sang upload'}</span>
-                        <span>{videoUploadState[selectedLecture.id].overallProgress}%</span>
-                      </div>
-                      <ProgressBar value={videoUploadState[selectedLecture.id].overallProgress} />
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-                        <span>
-                          {videoUploadState[selectedLecture.id].uploadedBytes.toLocaleString()} /{' '}
-                          {videoUploadState[selectedLecture.id].totalBytes.toLocaleString()} bytes
-                        </span>
-                        <span>
-                          {videoUploadState[selectedLecture.id].uploadedParts.length} part da xong
-                        </span>
-                        <span>Trang thai: {videoUploadState[selectedLecture.id].phase}</span>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
 	            </div>
 	          </div>
 	        ) : null}
 
-        {lectureDraft.type === LectureType.ARTICLE ? (
-          <div className="mt-6">
-            <p className="mb-2 text-sm font-medium text-gray-700">Noi dung bai viet</p>
-            <RichTextEditor
-              value={lectureDraft.content}
-              onChange={(value) =>
-                setLectureDraft((previous) =>
-                  previous ? { ...previous, content: value } : previous
-                )
-              }
-            />
-          </div>
-        ) : null}
+          {lectureDraft.type === LectureType.ARTICLE ? (
+            <div>
+              <p className="mb-2 text-sm font-medium text-gray-700">Noi dung bai viet</p>
+              <RichTextEditor
+                value={lectureDraft.content}
+                onChange={(value) => updateActiveLectureDraft((previous) => ({ ...previous, content: value }))}
+              />
+            </div>
+          ) : null}
 
-        {lectureDraft.type === LectureType.QUIZ ? (
-          <div className="mt-6">
-            <QuizBuilder value={quizQuestions} onChange={setQuizQuestions} />
-          </div>
-        ) : null}
+          {lectureDraft.type === LectureType.QUIZ ? (
+            <div>
+              <QuizBuilder value={quizQuestions} onChange={updateActiveQuizQuestions} />
+            </div>
+          ) : null}
+        </div>
       </motion.div>
     );
   };
 
   const renderStepTwo = () => (
-    <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <div
+      className={cn(
+        'grid gap-6 xl:min-h-[calc(100vh-10rem)]',
+        isCurriculumCollapsed
+          ? 'xl:grid-cols-[96px_minmax(0,1fr)]'
+          : 'xl:grid-cols-[360px_minmax(0,1fr)]'
+      )}
+    >
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm"
+        className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white p-5 shadow-sm xl:h-[calc(100vh-10rem)]"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-gray-900">Curriculum</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Sap xep chuong, tao bai giang va giu mot flow hoc tap ro rang.
-            </p>
-          </div>
-          <Button type="button" variant="secondary" onClick={() => void handleAddSection()} loading={isCreatingSection}>
-            <FolderPlus className="h-4 w-4" />
-            Them chuong
-          </Button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          {[
-            ['Chuong', curriculumStats.sectionCount],
-            ['Bai giang', curriculumStats.lectureCount],
-            ['Thoi luong', `${Math.floor(curriculumStats.videoSeconds / 60)} ph`],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">{label}</p>
-              <p className="mt-2 text-lg font-semibold text-gray-900">{value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-5 space-y-4">
-          {sections.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
-              <BookOpen className="mx-auto h-10 w-10 text-gray-300" />
-              <p className="mt-4 text-sm font-semibold text-gray-800">Chua co chuong nao</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Tao chuong dau tien de bat dau dung hanh trinh hoc tap.
-              </p>
-            </div>
-          ) : null}
-
-          {sections.map((section, sectionIndex) => {
-            const isExpanded = expandedSections[section.id] ?? true;
-            return (
-              <motion.div
-                key={section.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-3xl border border-gray-200 bg-white"
+        <div className={cn('flex items-start gap-3', isCurriculumCollapsed ? 'justify-center' : 'justify-between')}>
+          {isCurriculumCollapsed ? (
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full px-0"
+                onClick={() => setIsCurriculumCollapsed(false)}
+                aria-label="Mo rong curriculum"
               >
-                <button
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full px-0"
+                onClick={() => void handleAddSection()}
+                loading={isCreatingSection}
+                aria-label="Them chuong"
+              >
+                <FolderPlus className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Curriculum</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Sap xep chuong, tao bai giang va giu mot flow hoc tap ro rang.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" onClick={() => void handleAddSection()} loading={isCreatingSection}>
+                  <FolderPlus className="h-4 w-4" />
+                  Them chuong
+                </Button>
+                <Button
                   type="button"
-                  onClick={() =>
-                    setExpandedSections((previous) => ({
-                      ...previous,
-                      [section.id]: !isExpanded,
-                    }))
-                  }
-                  className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+                  variant="ghost"
+                  className="px-3"
+                  onClick={() => setIsCurriculumCollapsed(true)}
+                  aria-label="Thu gon curriculum"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-gray-100 p-2 text-gray-500">
-                      <GripVertical className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">
-                        Chuong {sectionIndex + 1}
-                      </p>
-                      <p className="text-sm font-semibold text-gray-900">{section.title}</p>
-                    </div>
-                  </div>
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                  )}
-                </button>
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
 
-                <AnimatePresence initial={false}>
-                  {isExpanded ? (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden border-t border-gray-100"
+        {isCurriculumCollapsed ? (
+          <div className="mt-5 flex flex-1 flex-col items-center gap-3 overflow-y-auto">
+            {[
+              ['C', curriculumStats.sectionCount],
+              ['B', curriculumStats.lectureCount],
+              ['P', `${Math.floor(curriculumStats.videoSeconds / 60)}`],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="flex w-full flex-col items-center rounded-2xl border border-gray-200 bg-gray-50 px-2 py-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">{label}</span>
+                <span className="mt-2 text-sm font-semibold text-gray-900">{value}</span>
+              </div>
+            ))}
+
+            {selectedLecture ? (
+              <div className="w-full rounded-2xl border border-primary-200 bg-primary-50 px-3 py-4 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-600">Dang mo</p>
+                <p className="mt-2 text-xs font-semibold text-gray-900">{lectureTypeLabels[selectedLecture.type]}</p>
+                <p className="mt-1 line-clamp-3 text-xs text-gray-600">{lectureDraft?.title ?? selectedLecture.title}</p>
+                {selectedLectureEditorDraft?.dirty ? (
+                  <Badge variant="warning" className="mt-3">Chua luu</Badge>
+                ) : null}
+              </div>
+            ) : (
+              <div className="w-full rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-3 py-6 text-center">
+                <Layers3 className="mx-auto h-4 w-4 text-gray-400" />
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              {[
+                ['Chuong', curriculumStats.sectionCount],
+                ['Bai giang', curriculumStats.lectureCount],
+                ['Thoi luong', `${Math.floor(curriculumStats.videoSeconds / 60)} ph`],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">{label}</p>
+                  <p className="mt-2 text-lg font-semibold text-gray-900">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              {sections.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                  <BookOpen className="mx-auto h-10 w-10 text-gray-300" />
+                  <p className="mt-4 text-sm font-semibold text-gray-800">Chua co chuong nao</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Tao chuong dau tien de bat dau dung hanh trinh hoc tap.
+                  </p>
+                </div>
+              ) : null}
+
+              {sections.map((section, sectionIndex) => {
+                const isExpanded = expandedSections[section.id] ?? true;
+                return (
+                  <motion.div
+                    key={section.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-3xl border border-gray-200 bg-white"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedSections((previous) => ({
+                          ...previous,
+                          [section.id]: !isExpanded,
+                        }))
+                      }
+                      className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
                     >
-                      <div className="space-y-4 px-5 py-4">
-                        <div className="flex gap-3">
-                          <Input
-                            value={sectionDrafts[section.id] ?? section.title}
-                            onChange={(event) =>
-                              setSectionDrafts((previous) => ({
-                                ...previous,
-                                [section.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="Ten chuong"
-                          />
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => void handleSaveSection(section.id)}
-                            loading={savingSectionId === section.id}
-                          >
-                            <Save className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            onClick={() => void handleDeleteSection(section.id)}
-                            loading={deletingTarget === section.id}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-2xl bg-gray-100 p-2 text-gray-500">
+                          <GripVertical className="h-4 w-4" />
                         </div>
-
-                        <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.VIDEO)}>
-                <Video className="h-4 w-4" />
-                Video
-              </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.ARTICLE)}>
-                <FileText className="h-4 w-4" />
-                Bai viet
-              </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.QUIZ)}>
-                <CheckSquare className="h-4 w-4" />
-                Quiz
-              </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {section.lectures.map((lecture) => {
-                            const active =
-                              selectedLectureRef?.sectionId === section.id &&
-                              selectedLectureRef.lectureId === lecture.id;
-                            return (
-                              <button
-                                type="button"
-                                key={lecture.id}
-                                onClick={() =>
-                                  setSelectedLectureRef({ sectionId: section.id, lectureId: lecture.id })
-                                }
-                                className={cn(
-                                  'flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition',
-                                  active
-                                    ? 'border-primary-200 bg-primary-50'
-                                    : 'border-gray-200 bg-gray-50 hover:border-primary-200 hover:bg-white'
-                                )}
-                              >
-                                <div className="rounded-2xl bg-white p-2 text-primary-700 shadow-sm">
-                                  {lecture.type === LectureType.VIDEO ? (
-                                    <Video className="h-4 w-4" />
-                                  ) : lecture.type === LectureType.ARTICLE ? (
-                                    <FileText className="h-4 w-4" />
-                                  ) : (
-                                    <CheckSquare className="h-4 w-4" />
-                                  )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-gray-900">{lecture.title}</p>
-                                  <p className="mt-1 text-xs text-gray-500">
-                                    {lectureTypeLabels[lecture.type]}
-                                    {lecture.durationSeconds ? ` • ${formatSeconds(lecture.durationSeconds)}` : ''}
-                                  </p>
-                                </div>
-                                {lecture.isFreePreview ? (
-                                  <Badge variant="info">Preview</Badge>
-                                ) : null}
-                              </button>
-                            );
-                          })}
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">
+                            Chuong {sectionIndex + 1}
+                          </p>
+                          <p className="text-sm font-semibold text-gray-900">{section.title}</p>
                         </div>
                       </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-        </div>
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {isExpanded ? (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden border-t border-gray-100"
+                        >
+                          <div className="space-y-4 px-5 py-4">
+                            <div className="flex gap-3">
+                              <Input
+                                value={sectionDrafts[section.id] ?? section.title}
+                                onChange={(event) =>
+                                  setSectionDrafts((previous) => ({
+                                    ...previous,
+                                    [section.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Ten chuong"
+                              />
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => void handleSaveSection(section.id)}
+                                loading={savingSectionId === section.id}
+                              >
+                                <Save className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                onClick={() => void handleDeleteSection(section.id)}
+                                loading={deletingTarget === section.id}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.VIDEO)}>
+                                <Video className="h-4 w-4" />
+                                Video
+                              </Button>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.ARTICLE)}>
+                                <FileText className="h-4 w-4" />
+                                Bai viet
+                              </Button>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddLecture(section.id, LectureType.QUIZ)}>
+                                <CheckSquare className="h-4 w-4" />
+                                Quiz
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {section.lectures.map((lecture) => {
+                                const active =
+                                  selectedLectureRef?.sectionId === section.id &&
+                                  selectedLectureRef.lectureId === lecture.id;
+                                const localLectureDraft = lectureEditorDrafts[lecture.id];
+                                return (
+                                  <button
+                                    type="button"
+                                    key={lecture.id}
+                                    onClick={() =>
+                                      setSelectedLectureRef({ sectionId: section.id, lectureId: lecture.id })
+                                    }
+                                    className={cn(
+                                      'flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition',
+                                      active
+                                        ? 'border-primary-200 bg-primary-50'
+                                        : 'border-gray-200 bg-gray-50 hover:border-primary-200 hover:bg-white'
+                                    )}
+                                  >
+                                    <div className="rounded-2xl bg-white p-2 text-primary-700 shadow-sm">
+                                      {lecture.type === LectureType.VIDEO ? (
+                                        <Video className="h-4 w-4" />
+                                      ) : lecture.type === LectureType.ARTICLE ? (
+                                        <FileText className="h-4 w-4" />
+                                      ) : (
+                                        <CheckSquare className="h-4 w-4" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-medium text-gray-900">
+                                        {localLectureDraft?.lectureDraft.title || lecture.title}
+                                      </p>
+                                      <p className="mt-1 text-xs text-gray-500">
+                                        {lectureTypeLabels[lecture.type]}
+                                        {lecture.durationSeconds ? ` • ${formatSeconds(lecture.durationSeconds)}` : ''}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {localLectureDraft?.dirty ? <Badge variant="warning">Chua luu</Badge> : null}
+                                      {lecture.isFreePreview ? (
+                                        <Badge variant="info">Preview</Badge>
+                                      ) : null}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </motion.div>
 
-      <AnimatePresence mode="wait">{renderLectureEditor()}</AnimatePresence>
+      <div className="min-h-0 xl:h-[calc(100vh-10rem)]">
+        <AnimatePresence mode="wait">{renderLectureEditor()}</AnimatePresence>
+      </div>
     </div>
   );
 
@@ -1473,7 +1975,7 @@ export default function InstructorCourseWizardPage() {
               {currentStep === 1
                 ? 'Khi metadata on dinh, builder se mo duong sang curriculum.'
                 : currentStep === 2
-                  ? 'Moi bai giang can duoc luu rieng de backend cap nhat thoi luong va lecture count.'
+                  ? 'Draft tung bai giang duoc giu lai ngay trong workspace; bam Luu bai giang khi muon day xuong backend va cap nhat lecture count.'
                   : 'Neu chua dat 100%, backend se tu choi submit va tra lai thong diep loi cu the.'}
             </p>
             <div className="flex flex-wrap gap-3">

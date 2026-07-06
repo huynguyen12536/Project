@@ -6,6 +6,7 @@ import com.learnhub.assessment.entity.AssessmentStatus;
 import com.learnhub.assessment.queue.AssessmentJob;
 import com.learnhub.assessment.queue.AssessmentJobQueue;
 import com.learnhub.assessment.repository.AssessmentRepository;
+import com.learnhub.assessment.service.AssessmentService;
 import com.learnhub.brf.service.BrfService;
 import com.learnhub.github.entity.RepositorySnapshot;
 import com.learnhub.github.service.RepositorySnapshotService;
@@ -42,7 +43,10 @@ class AssessmentJobConsumerTest {
     private RepositorySnapshotService mockSnapshotService;
 
     @Mock
-    private AssessmentEngine mockEngine;
+    private AssessmentService mockAssessmentService;
+
+    @Mock
+    private CompetencyScoringEngine mockEngine;
 
     @Mock
     private BrfService mockBrfService;
@@ -56,14 +60,14 @@ class AssessmentJobConsumerTest {
         consumer = new AssessmentJobConsumer(
                 mockJobQueue,
                 mockAssessmentRepository,
+                mockAssessmentService,
                 mockSnapshotService,
                 mockEngine,
                 mockBrfService,
                 objectMapper);
 
-        // Set configuration values
-        consumer.pollTimeoutSeconds = 1;
-        consumer.maxRetries = 3;
+        setPrivateField("pollTimeoutSeconds", 1);
+        setPrivateField("maxRetries", 3);
     }
 
     @Test
@@ -87,12 +91,12 @@ class AssessmentJobConsumerTest {
         RepositorySnapshot snapshot = new RepositorySnapshot();
         snapshot.setId(repoId);
 
-        AssessmentResult result = new AssessmentResult();
-        result.overallLevel = CompetencyDetector.CompetencyLevel.INTERMEDIATE;
+        CompetencyScoringEngine.AssessmentResult result = new CompetencyScoringEngine.AssessmentResult();
+        result.overallLevel = CompetencyDetector.CompetencyLevel.EMERGING;
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenReturn(snapshot);
         when(mockBrfService.versionExists("1.0.0"))
                 .thenReturn(true);
@@ -131,7 +135,7 @@ class AssessmentJobConsumerTest {
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenReturn(null);
 
         // Act & Assert
@@ -219,12 +223,12 @@ class AssessmentJobConsumerTest {
         RepositorySnapshot snapshot = new RepositorySnapshot();
         snapshot.setId(repoId);
 
-        AssessmentResult result = new AssessmentResult();
-        result.overallLevel = CompetencyDetector.CompetencyLevel.INTERMEDIATE;
+        CompetencyScoringEngine.AssessmentResult result = new CompetencyScoringEngine.AssessmentResult();
+        result.overallLevel = CompetencyDetector.CompetencyLevel.EMERGING;
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenReturn(snapshot);
         when(mockBrfService.getDefaultVersion())
                 .thenReturn("1.0.0");
@@ -264,12 +268,12 @@ class AssessmentJobConsumerTest {
         RepositorySnapshot snapshot = new RepositorySnapshot();
         snapshot.setId(repoId);
 
-        AssessmentResult result = new AssessmentResult();
-        result.overallLevel = CompetencyDetector.CompetencyLevel.INTERMEDIATE;
+        CompetencyScoringEngine.AssessmentResult result = new CompetencyScoringEngine.AssessmentResult();
+        result.overallLevel = CompetencyDetector.CompetencyLevel.EMERGING;
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenReturn(snapshot);
         when(mockBrfService.versionExists("1.0.0"))
                 .thenReturn(true);
@@ -307,7 +311,7 @@ class AssessmentJobConsumerTest {
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenThrow(new RuntimeException("Transient failure"));
 
         // Act
@@ -338,7 +342,7 @@ class AssessmentJobConsumerTest {
 
         when(mockAssessmentRepository.findById(assessmentId))
                 .thenReturn(Optional.of(assessment));
-        when(mockSnapshotService.getSnapshot(repoId))
+        when(mockSnapshotService.getSnapshot(repoId, userId))
                 .thenThrow(new RuntimeException("Transient failure"));
 
         // Act
@@ -356,7 +360,14 @@ class AssessmentJobConsumerTest {
         var method = AssessmentJobConsumer.class
                 .getDeclaredMethod("processJob", AssessmentJob.class);
         method.setAccessible(true);
-        method.invoke(consumer, job);
+        try {
+            method.invoke(consumer, job);
+        } catch (java.lang.reflect.InvocationTargetException exception) {
+            if (exception.getCause() instanceof Exception cause) {
+                throw cause;
+            }
+            throw exception;
+        }
     }
 
     /**
@@ -367,6 +378,23 @@ class AssessmentJobConsumerTest {
         var method = AssessmentJobConsumer.class
                 .getDeclaredMethod("processJobWithRetry", AssessmentJob.class);
         method.setAccessible(true);
-        method.invoke(consumer, job);
+        try {
+            method.invoke(consumer, job);
+        } catch (java.lang.reflect.InvocationTargetException exception) {
+            if (exception.getCause() instanceof Exception cause) {
+                throw cause;
+            }
+            throw exception;
+        }
+    }
+
+    private void setPrivateField(String fieldName, int value) {
+        try {
+            var field = AssessmentJobConsumer.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.setInt(consumer, value);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Failed to set test field " + fieldName, exception);
+        }
     }
 }

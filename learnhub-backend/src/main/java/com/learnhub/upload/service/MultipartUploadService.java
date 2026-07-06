@@ -4,6 +4,7 @@ import com.learnhub.catalog.course.model.Course;
 import com.learnhub.catalog.course.model.CourseLecture;
 import com.learnhub.catalog.course.repository.CourseLectureRepository;
 import com.learnhub.catalog.course.repository.CourseRepository;
+import com.learnhub.file.VideoProcessingService;
 import com.learnhub.upload.config.StorageProperties;
 import com.learnhub.upload.config.UploadProperties;
 import com.learnhub.upload.dto.request.AbortMultipartUploadRequest;
@@ -18,6 +19,7 @@ import com.learnhub.upload.dto.response.PresignedPartResponse;
 import com.learnhub.upload.dto.response.UploadedPartResponse;
 import com.learnhub.upload.model.MultipartUploadSession;
 import com.learnhub.upload.model.MultipartUploadStatus;
+import com.learnhub.upload.model.MediaProcessingStatus;
 import com.learnhub.upload.model.UploadAssetType;
 import com.learnhub.upload.model.UploadedMediaObject;
 import com.learnhub.upload.repository.MultipartUploadSessionRepository;
@@ -28,6 +30,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -35,6 +39,7 @@ import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest;
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListPartsRequest;
 import software.amazon.awssdk.services.s3.model.ListPartsResponse;
 import software.amazon.awssdk.services.s3.model.UploadPartRequest;
@@ -54,6 +59,10 @@ import java.util.UUID;
 @Slf4j
 @Transactional
 public class MultipartUploadService {
+    private static final long MIN_RECOMMENDED_CHUNK_SIZE_BYTES = 8L * 1024 * 1024;
+    private static final long CHUNK_SIZE_ALIGNMENT_BYTES = 8L * 1024 * 1024;
+    private static final int OBJECT_VERIFY_MAX_ATTEMPTS = 5;
+    private static final long OBJECT_VERIFY_RETRY_DELAY_MS = 250L;
 
     private final MultipartUploadSessionRepository sessionRepository;
     private final UploadedMediaObjectRepository uploadedMediaObjectRepository;
@@ -63,6 +72,9 @@ public class MultipartUploadService {
     private final UploadProperties uploadProperties;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+    private final ObjectStorageService objectStorageService;
+    private final UploadedMediaLifecycleService uploadedMediaLifecycleService;
+    private final VideoProcessingService videoProcessingService;
 
     public MultipartUploadSessionResponse startUpload(StartMultipartUploadRequest request, Authentication authentication) {
         UUID userId = currentUserId(authentication);
@@ -70,6 +82,11 @@ public class MultipartUploadService {
         String sanitizedFileName = sanitizeFilename(request.fileName());
         validateVideoRequest(request, sanitizedFileName, assetType);
         validateUploadOwnership(userId, request.courseId(), request.lectureId(), assetType);
+        long recommendedChunkSizeBytes = resolveChunkSizeBytes(request.size());
+
+        if (assetType == UploadAssetType.COURSE_VIDEO && request.lectureId() != null) {
+            uploadedMediaLifecycleService.prepareLectureVideoReplacement(request.lectureId());
+        }
 
         String extension = extractExtension(sanitizedFileName);
         String objectKey = buildObjectKey(userId, assetType, extension);
@@ -90,6 +107,8 @@ public class MultipartUploadService {
                 .originalFilename(sanitizedFileName)
                 .contentType(request.contentType())
                 .totalSize(request.size())
+                .chunkSizeBytes(recommendedChunkSizeBytes)
+                .maxConcurrency(uploadProperties.getMaxConcurrency())
                 .assetType(assetType)
                 .status(MultipartUploadStatus.INITIATED)
                 .uploadedBy(userId)
@@ -165,6 +184,8 @@ public class MultipartUploadService {
                 .build()
         );
 
+        HeadObjectResponse verifiedObjectMetadata = verifyCompletedObject(session);
+
         session.setStatus(MultipartUploadStatus.COMPLETED);
         session.setCompletedAt(LocalDateTime.now());
         session.setPublicUrl(normalizedObjectUrl);
@@ -179,15 +200,33 @@ public class MultipartUploadService {
         mediaObject.setPublicUrl(normalizedObjectUrl);
         mediaObject.setFilename(savedSession.getOriginalFilename());
         mediaObject.setSizeBytes(savedSession.getTotalSize());
-        mediaObject.setContentType(savedSession.getContentType());
+        mediaObject.setContentType(resolveEffectiveContentType(verifiedObjectMetadata.contentType(), savedSession.getContentType()));
         mediaObject.setDurationSeconds(request.durationSeconds());
         mediaObject.setAssetType(savedSession.getAssetType());
+        mediaObject.setProcessingStatus(MediaProcessingStatus.PENDING);
+        mediaObject.setChecksumSha256(null);
+        mediaObject.setChecksumAlgorithm(null);
+        mediaObject.setVerifiedAt(null);
+        mediaObject.setThumbnailUrl(null);
+        mediaObject.setThumbnailObjectKey(null);
+        mediaObject.setMetadataError(null);
         mediaObject.setUploadedBy(savedSession.getUploadedBy());
         mediaObject.setCourseId(savedSession.getCourseId());
         mediaObject.setLectureId(savedSession.getLectureId());
-        mediaObject.setEtag(completedParts.isEmpty() ? null : completedParts.get(completedParts.size() - 1).eTag());
+        mediaObject.setEtag(verifiedObjectMetadata.eTag());
 
         UploadedMediaObject savedObject = uploadedMediaObjectRepository.save(mediaObject);
+        uploadedMediaLifecycleService.attachCompletedLectureVideo(savedObject);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    videoProcessingService.processVideoAsync(savedObject.getId());
+                }
+            });
+        } else {
+            videoProcessingService.processVideoAsync(savedObject.getId());
+        }
         return toCompleteResponse(savedObject, savedSession);
     }
 
@@ -253,12 +292,32 @@ public class MultipartUploadService {
             session.getOriginalFilename(),
             session.getContentType(),
             session.getTotalSize(),
-            uploadProperties.getChunkSizeBytes(),
-            uploadProperties.getMaxConcurrency(),
+            session.getChunkSizeBytes(),
+            session.getMaxConcurrency(),
             uploadProperties.getMaxRetries(),
             session.getExpiresAt(),
             uploadedParts
         );
+    }
+
+    private long resolveChunkSizeBytes(long fileSizeBytes) {
+        long configuredMaxChunkSize = Math.max(MIN_RECOMMENDED_CHUNK_SIZE_BYTES, uploadProperties.getChunkSizeBytes());
+        int desiredParallelParts = Math.max(1, uploadProperties.getMaxConcurrency());
+        long chunkSizeFromParallelism = ceilDiv(fileSizeBytes, desiredParallelParts);
+        long alignedChunkSize = alignChunkSize(Math.max(MIN_RECOMMENDED_CHUNK_SIZE_BYTES, chunkSizeFromParallelism));
+        return Math.min(configuredMaxChunkSize, alignedChunkSize);
+    }
+
+    private long alignChunkSize(long chunkSizeBytes) {
+        long remainder = chunkSizeBytes % CHUNK_SIZE_ALIGNMENT_BYTES;
+        if (remainder == 0) {
+            return chunkSizeBytes;
+        }
+        return chunkSizeBytes + (CHUNK_SIZE_ALIGNMENT_BYTES - remainder);
+    }
+
+    private long ceilDiv(long value, long divisor) {
+        return (value + divisor - 1) / divisor;
     }
 
     private CompleteMultipartUploadResponse toCompleteResponse(
@@ -412,11 +471,7 @@ public class MultipartUploadService {
     }
 
     private String buildPublicUrl(String objectKey) {
-        return stripTrailingSlash(storageProperties.getPublicEndpoint())
-            + "/"
-            + storageProperties.getBucketName()
-            + "/"
-            + objectKey;
+        return objectStorageService.buildPublicUrl(storageProperties.getBucketName(), objectKey);
     }
 
     private String sanitizeFilename(String value) {
@@ -457,5 +512,98 @@ public class MultipartUploadService {
         return value != null && value.endsWith("/")
             ? value.substring(0, value.length() - 1)
             : value;
+    }
+
+    private HeadObjectResponse verifyCompletedObject(MultipartUploadSession session) {
+        HeadObjectResponse objectMetadata = null;
+
+        for (int attempt = 1; attempt <= OBJECT_VERIFY_MAX_ATTEMPTS; attempt += 1) {
+            try {
+                objectMetadata = objectStorageService.headObject(session.getBucketName(), session.getObjectKey());
+
+                if (objectMetadata.contentLength() != null && objectMetadata.contentLength().equals(session.getTotalSize())) {
+                    logContentTypeNormalization(session, objectMetadata);
+                    return objectMetadata;
+                }
+
+                log.warn(
+                    "Multipart upload verification size mismatch for uploadId={} objectKey={} attempt={}/{} expectedSize={} actualSize={}",
+                    session.getUploadId(),
+                    session.getObjectKey(),
+                    attempt,
+                    OBJECT_VERIFY_MAX_ATTEMPTS,
+                    session.getTotalSize(),
+                    objectMetadata.contentLength()
+                );
+            } catch (SdkException exception) {
+                log.warn(
+                    "Multipart upload verification headObject failed for uploadId={} objectKey={} attempt={}/{}: {}",
+                    session.getUploadId(),
+                    session.getObjectKey(),
+                    attempt,
+                    OBJECT_VERIFY_MAX_ATTEMPTS,
+                    exception.getMessage()
+                );
+            }
+
+            sleepBeforeVerificationRetry();
+        }
+
+        objectStorageService.deleteObject(session.getBucketName(), session.getObjectKey());
+        session.setStatus(MultipartUploadStatus.FAILED);
+        session.setErrorMessage("Uploaded object verification failed after multipart completion");
+        sessionRepository.save(session);
+
+        throw new ResponseStatusException(
+            HttpStatus.BAD_GATEWAY,
+            "Object storage verification failed after upload completion"
+        );
+    }
+
+    private void logContentTypeNormalization(MultipartUploadSession session, HeadObjectResponse objectMetadata) {
+        String storedContentType = objectMetadata.contentType();
+        String effectiveContentType = resolveEffectiveContentType(storedContentType, session.getContentType());
+
+        if (storedContentType == null || storedContentType.isBlank()) {
+            log.warn(
+                "Multipart upload verification found empty content-type for uploadId={} objectKey={}; using requested content-type={}",
+                session.getUploadId(),
+                session.getObjectKey(),
+                effectiveContentType
+            );
+            return;
+        }
+
+        if (!storedContentType.equalsIgnoreCase(effectiveContentType)) {
+            log.warn(
+                "Multipart upload verification normalized content-type for uploadId={} objectKey={} from {} to {}",
+                session.getUploadId(),
+                session.getObjectKey(),
+                storedContentType,
+                effectiveContentType
+            );
+        }
+    }
+
+    private String resolveEffectiveContentType(String storedContentType, String requestedContentType) {
+        if (storedContentType == null || storedContentType.isBlank()) {
+            return requestedContentType;
+        }
+
+        if ("application/octet-stream".equalsIgnoreCase(storedContentType)
+            || "binary/octet-stream".equalsIgnoreCase(storedContentType)) {
+            return requestedContentType;
+        }
+
+        return storedContentType;
+    }
+
+    private void sleepBeforeVerificationRetry() {
+        try {
+            Thread.sleep(OBJECT_VERIFY_RETRY_DELAY_MS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Upload verification interrupted");
+        }
     }
 }

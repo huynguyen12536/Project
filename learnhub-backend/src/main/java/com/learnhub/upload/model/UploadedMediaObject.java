@@ -55,6 +55,28 @@ public class UploadedMediaObject {
     @Column(name = "etag", length = 255)
     private String etag;
 
+    @Column(name = "checksum_sha256", length = 64)
+    private String checksumSha256;
+
+    @Column(name = "checksum_algorithm", length = 32)
+    private String checksumAlgorithm;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    @Column(name = "thumbnail_url", columnDefinition = "TEXT")
+    private String thumbnailUrl;
+
+    @Column(name = "thumbnail_object_key", columnDefinition = "TEXT")
+    private String thumbnailObjectKey;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "processing_status", nullable = false, length = 32)
+    private MediaProcessingStatus processingStatus;
+
+    @Column(name = "metadata_error", columnDefinition = "TEXT")
+    private String metadataError;
+
     @Column(name = "uploaded_by", nullable = false)
     private UUID uploadedBy;
 

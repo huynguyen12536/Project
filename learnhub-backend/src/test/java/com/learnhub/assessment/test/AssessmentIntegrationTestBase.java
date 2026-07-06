@@ -5,6 +5,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.junit.jupiter.Container;
@@ -51,13 +52,11 @@ public abstract class AssessmentIntegrationTestBase {
             .withInitScript("db/init-test.sql")
             .withLogConsumer(new Slf4jLogConsumer(log));
 
-    /**
-     * Embedded Redis instance for testing.
-     * Note: Using embedded Redis instead of Testcontainers container
-     * for simplicity. For production test environments, consider
-     * using testcontainers/redis container.
-     */
-    protected static EmbeddedRedisConfig redisConfig = EmbeddedRedisConfig.getInstance();
+    @Container
+    @SuppressWarnings("resource")
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379)
+        .withLogConsumer(new Slf4jLogConsumer(log));
 
     /**
      * Dynamically register PostgreSQL properties with Spring.
@@ -73,8 +72,8 @@ public abstract class AssessmentIntegrationTestBase {
         registry.add("spring.datasource.password", postgres::getPassword);
 
         // Redis configuration (using embedded Redis)
-        registry.add("spring.redis.host", () -> "localhost");
-        registry.add("spring.redis.port", () -> redisConfig.getPort());
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", redis::getFirstMappedPort);
 
         // Flyway configuration for testing
         registry.add("spring.flyway.enabled", () -> true);
@@ -82,6 +81,6 @@ public abstract class AssessmentIntegrationTestBase {
 
         log.info("Test infrastructure configured:");
         log.info("  - PostgreSQL: {} @ {}", postgres.getDatabaseName(), postgres.getJdbcUrl());
-        log.info("  - Redis: localhost:{}", redisConfig.getPort());
+        log.info("  - Redis: {}:{}", redis.getHost(), redis.getFirstMappedPort());
     }
 }

@@ -19,7 +19,9 @@ RUN mvn clean package \
   -q
 
 # Stage 2: Runtime image
-FROM eclipse-temurin:21-jre-alpine
+# Reuse the Maven Temurin base to avoid an extra Docker Hub pull for a second
+# Java runtime image in environments where registry access is unstable.
+FROM maven:3.9-eclipse-temurin-21 AS runtime
 
 LABEL maintainer="LearnHub DevOps Team"
 LABEL version="1.0.0"
@@ -27,14 +29,17 @@ LABEL description="LearnHub Backend - Real-time Assessment Integration"
 
 WORKDIR /app
 
-# Install curl for health checks and timezone data
-RUN apk add --no-cache curl tzdata
+# Install runtime utilities and video probe tools
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl tzdata ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy built JAR from builder stage
 COPY --from=builder /build/target/learnhub-backend-*.jar app.jar
 
 # Create non-root user for security
-RUN addgroup -S learnhub && adduser -S learnhub -G learnhub
+RUN groupadd --system learnhub \
+  && useradd --system --gid learnhub --create-home --home-dir /home/learnhub learnhub
 USER learnhub
 
 # Expose API port
@@ -42,7 +47,7 @@ EXPOSE 8080
 
 # Health check endpoint (Spring Boot Actuator)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD curl -f http://localhost:8080/health || exit 1
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 # JVM optimization for production
 ENV JAVA_OPTS="\

@@ -13,10 +13,10 @@ import java.util.List;
 @Setter
 public class UploadProperties {
 
-    @Value("${app.upload.multipart.chunk-size-bytes:10485760}")
+    @Value("${app.upload.multipart.chunk-size-bytes:67108864}")
     private long chunkSizeBytes;
 
-    @Value("${app.upload.multipart.max-concurrency:5}")
+    @Value("${app.upload.multipart.max-concurrency:6}")
     private int maxConcurrency;
 
     @Value("${app.upload.multipart.max-retries:3}")

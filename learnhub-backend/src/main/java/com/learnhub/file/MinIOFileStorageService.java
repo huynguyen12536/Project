@@ -10,9 +10,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -54,7 +61,7 @@ public class MinIOFileStorageService implements FileStorageService {
     }
 
     @Override
-    public String uploadFile(MultipartFile file, UUID userId) throws IOException {
+    public FileUploadResult uploadFile(MultipartFile file, UUID userId) throws IOException {
         log.debug("Uploading avatar for user: {}", userId);
         validateFile(file);
 
@@ -67,7 +74,7 @@ public class MinIOFileStorageService implements FileStorageService {
     }
 
     @Override
-    public String uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException {
+    public FileUploadResult uploadCourseFile(MultipartFile file, UUID userId, String folder) throws IOException {
         log.debug("Uploading course file for user: {} in folder: {}", userId, folder);
         validateCourseFile(file, folder);
         String extension = getFileExtension(file.getOriginalFilename());
@@ -76,13 +83,17 @@ public class MinIOFileStorageService implements FileStorageService {
         return uploadFileInternal(file, objectKey);
     }
 
-    private String uploadFileInternal(MultipartFile file, String objectKey) throws IOException {
+    private FileUploadResult uploadFileInternal(MultipartFile file, String objectKey) throws IOException {
+        // Compute SHA-256 checksum
+        byte[] fileBytes = readAllBytes(file.getInputStream());
+        String checksum = computeSHA256(fileBytes);
+
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
                     .bucket(bucketName)
                     .object(objectKey)
-                    .stream(file.getInputStream(), file.getSize(), -1)
+                    .stream(new ByteArrayInputStream(fileBytes), fileBytes.length, -1)
                     .contentType(file.getContentType())
                     .build()
             );
@@ -91,8 +102,35 @@ public class MinIOFileStorageService implements FileStorageService {
         }
 
         String publicUrl = buildPublicUrl(objectKey);
-        log.info("File uploaded successfully: {}", publicUrl);
-        return publicUrl;
+        log.info("File uploaded successfully: {}, SHA-256: {}", publicUrl, checksum);
+        
+        return FileUploadResult.builder()
+            .url(publicUrl)
+            .checksum(checksum)
+            .checksumAlgorithm("SHA-256")
+            .fileSize((long) fileBytes.length)
+            .mimeType(file.getContentType())
+            .build();
+    }
+
+    private byte[] readAllBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[4096];
+        while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        return buffer.toByteArray();
+    }
+
+    private String computeSHA256(byte[] data) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("Failed to compute SHA-256 hash", e);
+        }
     }
 
     private void validateCourseFile(MultipartFile file, String folder) {

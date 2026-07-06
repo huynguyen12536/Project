@@ -1,6 +1,8 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
+import { cn } from '../../lib/cn';
+import { useUIStore } from '../../stores/uiStore';
 import AdminSidebar from './AdminSidebar';
 import AdminWorkspaceHeader from './AdminWorkspaceHeader';
 
@@ -18,13 +20,19 @@ export const AdminWorkspaceLayout: React.FC<AdminWorkspaceLayoutProps> = ({
   children,
 }) => {
   const location = useLocation();
+  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       <AdminWorkspaceHeader title={title} />
       <AdminSidebar />
 
-      <div className="px-4 py-5 sm:px-6 lg:pl-[312px] lg:pr-8">
+      <div
+        className={cn(
+          'px-4 py-5 sm:px-6 lg:pr-8',
+          sidebarCollapsed ? 'lg:pl-[136px]' : 'lg:pl-[312px]'
+        )}
+      >
         <div className="mx-auto max-w-[1380px]">
           <div className="mb-6 rounded-2xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

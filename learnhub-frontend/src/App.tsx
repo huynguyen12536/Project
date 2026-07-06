@@ -27,6 +27,9 @@ const InstructorSettingsPage = lazy(() => import('./pages/instructor/InstructorS
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminCoursesPage = lazy(() => import('./pages/admin/AdminCoursesPage'));
+const AdminCourseQueuePage = lazy(() => import('./pages/admin/AdminCourseQueuePage'));
+const AdminCourseReviewPage = lazy(() => import('./pages/admin/AdminCourseReviewPage'));
+const AdminCourseDetailsPage = lazy(() => import('./pages/admin/AdminCourseDetailsPage'));
 const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage'));
 const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
 const AdminTaxonomyPage = lazy(() => import('./pages/admin/AdminTaxonomyPage'));
@@ -107,7 +110,9 @@ const AppRoutes = () => {
           <Route path="/learn/courses/:id" element={<RequireAuth><CoursePlayerPage /></RequireAuth>} />
           <Route path="/admin" element={<RequireRole roles={['admin']}><AdminDashboardPage /></RequireRole>} />
           <Route path="/admin/users" element={<RequireRole roles={['admin']}><AdminUsersPage /></RequireRole>} />
-          <Route path="/admin/courses" element={<RequireRole roles={['admin']}><AdminCoursesPage /></RequireRole>} />
+          <Route path="/admin/courses" element={<RequireRole roles={['admin']}><AdminCourseQueuePage /></RequireRole>} />
+          <Route path="/admin/courses/:courseId/review" element={<RequireRole roles={['admin']}><AdminCourseReviewPage /></RequireRole>} />
+          <Route path="/admin/courses/:courseId/details" element={<RequireRole roles={['admin']}><AdminCourseDetailsPage /></RequireRole>} />
           <Route path="/admin/taxonomy" element={<RequireRole roles={['admin']}><AdminTaxonomyPage /></RequireRole>} />
           <Route path="/admin/orders" element={<RequireRole roles={['admin']}><AdminOrdersPage /></RequireRole>} />
           <Route path="/admin/system" element={<RequireRole roles={['admin']}><AdminSystemPage /></RequireRole>} />

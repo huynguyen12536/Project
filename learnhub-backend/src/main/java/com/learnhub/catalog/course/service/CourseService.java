@@ -6,8 +6,10 @@ import com.learnhub.catalog.course.dto.request.CreateCourseSectionRequest;
 import com.learnhub.catalog.course.dto.request.RejectCourseRequest;
 import com.learnhub.catalog.course.dto.request.UpdateCourseLectureRequest;
 import com.learnhub.catalog.course.dto.request.UpdateCourseRequest;
+import com.learnhub.file.FileStorageService;
 import com.learnhub.catalog.course.dto.request.UpdateCourseSectionRequest;
 import com.learnhub.catalog.course.dto.response.CourseLectureResponse;
+import com.learnhub.catalog.course.dto.response.CourseDetailResponse;
 import com.learnhub.catalog.course.dto.response.CourseResponse;
 import com.learnhub.catalog.course.dto.response.CourseSectionResponse;
 import com.learnhub.catalog.course.model.Course;
@@ -26,9 +28,11 @@ import com.learnhub.catalog.taxonomy.repository.CourseLanguageRepository;
 import com.learnhub.catalog.taxonomy.repository.CourseLevelRepository;
 import com.learnhub.catalog.taxonomy.repository.CourseSubcategoryRepository;
 import com.learnhub.common.exception.ResourceNotFoundException;
+import com.learnhub.upload.service.UploadedMediaLifecycleService;
 import com.learnhub.user.model.User;
 import com.learnhub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +43,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class CourseService {
     private final CourseRepository courseRepository;
     private final CourseSectionRepository courseSectionRepository;
@@ -48,6 +53,8 @@ public class CourseService {
     private final CourseSubcategoryRepository subcategoryRepository;
     private final CourseLevelRepository levelRepository;
     private final CourseLanguageRepository languageRepository;
+    private final FileStorageService fileStorageService;
+    private final UploadedMediaLifecycleService uploadedMediaLifecycleService;
 
     @Transactional(readOnly = true)
     public List<CourseResponse> getInstructorCourses(UUID instructorId) {
@@ -72,6 +79,37 @@ public class CourseService {
     @Transactional(readOnly = true)
     public List<CourseResponse> getPendingCoursesForAdmin() {
         return courseRepository.findAllByStatus(CourseStatus.PENDING_REVIEW).stream()
+            .map(CourseResponse::from)
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CourseResponse getAdminCourse(UUID courseId) {
+        Course course = courseRepository.findById(courseId)
+            .orElseThrow(() -> new ResourceNotFoundException("Course not found: " + courseId));
+        if (course.getStatus() != CourseStatus.PENDING_REVIEW) {
+            throw new IllegalStateException("Only PENDING_REVIEW courses can be reviewed");
+        }
+        return CourseResponse.from(course);
+    }
+
+    @Transactional(readOnly = true)
+    public CourseResponse getCourseDetailForAdmin(UUID courseId) {
+        Course course = courseRepository.findById(courseId)
+            .orElseThrow(() -> new ResourceNotFoundException("Course not found: " + courseId));
+        return CourseResponse.from(course);
+    }
+
+    @Transactional(readOnly = true)
+    public CourseDetailResponse getCourseDetailForAdminWithSections(UUID courseId) {
+        Course course = courseRepository.findById(courseId)
+            .orElseThrow(() -> new ResourceNotFoundException("Course not found: " + courseId));
+        return CourseDetailResponse.from(course);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CourseResponse> getAllCoursesForAdmin() {
+        return courseRepository.findAll().stream()
             .map(CourseResponse::from)
             .toList();
     }
@@ -112,8 +150,31 @@ public class CourseService {
         if (request.title() != null) course.setTitle(request.title());
         if (request.subtitle() != null) course.setSubtitle(request.subtitle());
         if (request.description() != null) course.setDescription(request.description());
-        if (request.thumbnailUrl() != null) course.setThumbnailUrl(request.thumbnailUrl());
-        if (request.promoVideoUrl() != null) course.setPromoVideoUrl(request.promoVideoUrl());
+        
+        if (request.thumbnailUrl() != null) {
+            String oldThumbnailUrl = course.getThumbnailUrl();
+            if (oldThumbnailUrl != null && !oldThumbnailUrl.equals(request.thumbnailUrl())) {
+                try {
+                    fileStorageService.deleteFile(oldThumbnailUrl);
+                } catch (Exception e) {
+                    log.warn("Failed to delete old thumbnail file: {}", oldThumbnailUrl, e);
+                }
+            }
+            course.setThumbnailUrl(request.thumbnailUrl());
+        }
+        
+        if (request.promoVideoUrl() != null) {
+            String oldPromoVideoUrl = course.getPromoVideoUrl();
+            if (oldPromoVideoUrl != null && !oldPromoVideoUrl.equals(request.promoVideoUrl())) {
+                try {
+                    fileStorageService.deleteFile(oldPromoVideoUrl);
+                } catch (Exception e) {
+                    log.warn("Failed to delete old promo video file: {}", oldPromoVideoUrl, e);
+                }
+            }
+            course.setPromoVideoUrl(request.promoVideoUrl());
+        }
+        
         if (request.categoryId() != null) {
             course.setCategory(categoryRepository.findById(request.categoryId()).orElse(null));
         }
@@ -159,6 +220,12 @@ public class CourseService {
         return CourseResponse.from(courseRepository.save(course));
     }
 
+    public void deleteCourse(UUID courseId) {
+        Course course = courseRepository.findById(courseId)
+            .orElseThrow(() -> new ResourceNotFoundException("Course not found: " + courseId));
+        courseRepository.delete(course);
+    }
+
     public CourseSectionResponse createSection(UUID courseId, CreateCourseSectionRequest request, UUID instructorId) {
         Course course = getOwnedCourse(courseId, instructorId);
         
@@ -188,6 +255,7 @@ public class CourseService {
     public void deleteSection(UUID courseId, UUID sectionId, UUID instructorId) {
         Course course = getOwnedCourse(courseId, instructorId);
         CourseSection section = getOwnedSection(courseId, sectionId, instructorId);
+        uploadedMediaLifecycleService.deleteLectureAndSectionAssets(sectionId);
         courseSectionRepository.delete(section);
         updateCourseStats(course);
     }
@@ -222,15 +290,41 @@ public class CourseService {
 
     public CourseLectureResponse updateLecture(UUID courseId, UUID sectionId, UUID lectureId, UpdateCourseLectureRequest request, UUID instructorId) {
         CourseLecture lecture = getOwnedLecture(courseId, sectionId, lectureId, instructorId);
-        
+
+        boolean clearVideoAsset = false;
+        if (request.type() != null && request.type() != CourseLecture.LectureType.VIDEO) {
+            clearVideoAsset = true;
+        }
+
         if (request.title() != null) lecture.setTitle(request.title());
         if (request.type() != null) lecture.setType(request.type());
         if (request.content() != null) lecture.setContent(request.content());
-        if (request.videoUrl() != null) lecture.setVideoUrl(request.videoUrl());
+        if (request.videoUrl() != null) {
+            String nextVideoUrl = request.videoUrl().trim();
+            String currentVideoUrl = lecture.getVideoUrl();
+
+            if (nextVideoUrl.isBlank()) {
+                clearVideoAsset = true;
+                lecture.setVideoUrl(null);
+            } else {
+                if (currentVideoUrl != null && !currentVideoUrl.equals(nextVideoUrl)) {
+                    uploadedMediaLifecycleService.prepareLectureVideoReplacement(lecture.getId());
+                }
+                lecture.setVideoUrl(nextVideoUrl);
+            }
+        }
         if (request.durationSeconds() != null) lecture.setDurationSeconds(request.durationSeconds());
         if (request.displayOrder() != null) lecture.setDisplayOrder(request.displayOrder());
         if (request.isFreePreview() != null) lecture.setIsFreePreview(request.isFreePreview());
-        
+
+        if (clearVideoAsset) {
+            uploadedMediaLifecycleService.prepareLectureVideoReplacement(lecture.getId());
+            lecture.setVideoUrl(null);
+            if (request.durationSeconds() == null) {
+                lecture.setDurationSeconds(null);
+            }
+        }
+
         CourseLecture savedLecture = courseLectureRepository.save(lecture);
         updateCourseStats(lecture.getCourse());
         
@@ -240,6 +334,7 @@ public class CourseService {
     public void deleteLecture(UUID courseId, UUID sectionId, UUID lectureId, UUID instructorId) {
         Course course = getOwnedCourse(courseId, instructorId);
         CourseLecture lecture = getOwnedLecture(courseId, sectionId, lectureId, instructorId);
+        uploadedMediaLifecycleService.prepareLectureVideoReplacement(lecture.getId());
         courseLectureRepository.delete(lecture);
         updateCourseStats(course);
     }

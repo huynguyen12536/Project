@@ -103,11 +103,14 @@ app:
     max-retries: ${NOTIFICATION_MAX_RETRIES:4}
   upload:
     multipart:
-      chunk-size-bytes: ${UPLOAD_MULTIPART_CHUNK_SIZE_BYTES:10485760}
-      max-concurrency: ${UPLOAD_MULTIPART_MAX_CONCURRENCY:5}
+      chunk-size-bytes: ${UPLOAD_MULTIPART_CHUNK_SIZE_BYTES:67108864}
+      max-concurrency: ${UPLOAD_MULTIPART_MAX_CONCURRENCY:6}
       max-retries: ${UPLOAD_MULTIPART_MAX_RETRIES:3}
       presign-expiry-minutes: ${UPLOAD_MULTIPART_PRESIGN_EXPIRY_MINUTES:20}
       session-ttl-hours: ${UPLOAD_SESSION_TTL_HOURS:24}
+    cleanup:
+      enabled: ${UPLOAD_CLEANUP_ENABLED:true}
+      expired-session-cron: ${UPLOAD_EXPIRED_SESSION_CRON:0 */15 * * * ?}
     video:
       max-size-bytes: ${UPLOAD_MAX_VIDEO_SIZE_BYTES:5368709120}
       allowed-mime-types: ${UPLOAD_ALLOWED_VIDEO_MIME_TYPES:video/mp4,video/webm,video/quicktime}

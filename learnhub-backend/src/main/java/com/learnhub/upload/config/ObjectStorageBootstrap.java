@@ -8,6 +8,7 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest;
 
 @Component
 @RequiredArgsConstructor
@@ -22,7 +23,7 @@ public class ObjectStorageBootstrap {
         try {
             log.info("Initializing object storage bucket '{}'", storageProperties.getBucketName());
             ensureBucketExists();
-            log.info("Bucket policy and CORS are managed by the MinIO init job");
+            ensurePublicReadPolicy();
             log.info("Object storage bootstrap completed for bucket '{}'", storageProperties.getBucketName());
         } catch (Exception exception) {
             log.error(
@@ -45,5 +46,36 @@ public class ObjectStorageBootstrap {
             );
             log.info("Created object storage bucket '{}'", storageProperties.getBucketName());
         }
+    }
+
+    private void ensurePublicReadPolicy() {
+        String bucketName = storageProperties.getBucketName();
+        String policy = """
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "PublicReadGetObject",
+                  "Effect": "Allow",
+                  "Principal": "*",
+                  "Action": [
+                    "s3:GetObject"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::%s/*"
+                  ]
+                }
+              ]
+            }
+            """.formatted(bucketName);
+
+        s3Client.putBucketPolicy(
+            PutBucketPolicyRequest.builder()
+                .bucket(bucketName)
+                .policy(policy)
+                .build()
+        );
+
+        log.info("Applied public-read policy to object storage bucket '{}'", bucketName);
     }
 }

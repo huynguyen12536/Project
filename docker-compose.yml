@@ -113,6 +113,7 @@ services:
   backend:
     <<: [*default-env, *default-logging]
     container_name: learnhub-backend
+    pull_policy: never
     build:
       context: ./learnhub-backend
       dockerfile: Dockerfile
@@ -154,6 +155,7 @@ services:
   frontend:
     <<: [*default-env, *default-logging]
     container_name: learnhub-frontend
+    pull_policy: never
     build:
       context: ./learnhub-frontend
       dockerfile: Dockerfile

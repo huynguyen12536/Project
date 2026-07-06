@@ -19,7 +19,6 @@
 /build/src/test/java/com/learnhub/assessment/service/ProgressTrackerTest.java
 /build/src/test/java/com/learnhub/assessment/test/AssessmentIntegrationTestBase.java
 /build/src/test/java/com/learnhub/assessment/test/AssessmentPhase1IntegrationTest.java
-/build/src/test/java/com/learnhub/assessment/test/EmbeddedRedisConfig.java
 /build/src/test/java/com/learnhub/assessment/util/SseEmitterManagerTest.java
 /build/src/test/java/com/learnhub/assessment/worker/AssessmentWorkerIntegrationTest.java
 /build/src/test/java/com/learnhub/auth/controller/AuthControllerIntegrationTest.java
@@ -40,6 +39,9 @@
 /build/src/test/java/com/learnhub/github/service/GitHubRepositoryServiceTest.java
 /build/src/test/java/com/learnhub/github/service/RepositorySelectionServiceTest.java
 /build/src/test/java/com/learnhub/github/service/RepositorySnapshotServiceTest.java
+/build/src/test/java/com/learnhub/upload/controller/MultipartUploadControllerTest.java
+/build/src/test/java/com/learnhub/upload/service/MultipartUploadServiceTest.java
+/build/src/test/java/com/learnhub/upload/service/UploadedMediaLifecycleServiceTest.java
 /build/src/test/java/com/learnhub/user/service/AccountLockoutServiceTest.java
 /build/src/test/java/com/learnhub/user/service/EmailVerificationServiceTest.java
 /build/src/test/java/com/learnhub/user/service/PasswordResetServiceTest.java
